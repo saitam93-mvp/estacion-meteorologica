@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from supabase import create_client, Client
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime # <-- Agregamos datetime aquí
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -36,7 +36,7 @@ end_date = None
 if filtro_tiempo == "Rango de Fechas":
     fechas = st.sidebar.date_input(
         "Selecciona el rango en el calendario:",
-        value=(date.today() - timedelta(days=1), date.today()), # <-- CAMBIADO A 1 DÍA (24 HRS)
+        value=(date.today() - timedelta(days=1), date.today()), 
         max_value=date.today()
     )
     
@@ -56,7 +56,11 @@ def fetch_data(filtro, start=None, end=None):
         query = query.order("created_at", desc=False)
     
     elif filtro == "Últimos datos (Tiempo Real)":
-        query = query.order("id", desc=True).limit(100)
+        # <-- NUEVA LÓGICA: Calculamos exactamente 24 horas hacia atrás
+        # Usamos utcnow() porque Supabase guarda las horas en formato UTC por defecto
+        hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        query = query.gte("created_at", hace_24_hrs)
+        query = query.order("created_at", desc=False) # Lo pedimos ya ordenado cronológicamente
     
     else: 
         query = query.order("created_at", desc=False).limit(10000) 
@@ -66,8 +70,6 @@ def fetch_data(filtro, start=None, end=None):
     if response.data:
         df = pd.DataFrame(response.data)
         df["created_at"] = pd.to_datetime(df["created_at"])
-        if filtro == "Últimos datos (Tiempo Real)":
-            df = df.sort_values(by="created_at")
         return df
     return pd.DataFrame()
 
@@ -119,13 +121,10 @@ if not df.empty:
     with tab3:
         st.markdown("**Comportamiento del Viento (m/s) con Promedio Móvil**")
         
-        # <-- TRUCO: Creamos un espacio reservado para el gráfico
         espacio_grafico = st.empty()
         
-        # <-- El slider ahora está visualmente abajo
         ventana = st.slider("Suavizado del Promedio Móvil (N° de lecturas)", min_value=2, max_value=60, value=15)
         
-        # Cálculos matemáticos
         df["Promedio Móvil"] = df["wind_speed"].rolling(window=ventana, min_periods=1).mean()
         
         base = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
@@ -134,7 +133,6 @@ if not df.empty:
         
         grafico_viento = alt.layer(barras, linea).interactive()
         
-        # <-- Dibujamos el gráfico en el espacio reservado que quedó arriba
         espacio_grafico.altair_chart(grafico_viento, use_container_width=True)
 
     # 3. TABLA CRUDA
