@@ -1,20 +1,21 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 from supabase import create_client, Client
 from datetime import date, timedelta
 
-# Configuración de la página del navegador
+# --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
     page_title="Estación Meteorológica",
     page_icon="🌤️",
     layout="wide"
 )
 
-# Credenciales de Supabase
+# --- CREDENCIALES DE SUPABASE ---
 SUPABASE_URL = "https://qtzckgfxdbuudokoobim.supabase.co"
 SUPABASE_KEY = "sb_publishable_k3bPaqbhMmhUnY8XaqaLKg_lq8tI-RE"
 
-# Inicializar cliente de Supabase
+# Inicializar cliente de Supabase optimizado con caché
 @st.cache_resource
 def init_connection():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -59,7 +60,7 @@ def fetch_data(filtro, start=None, end=None):
         query = query.order("id", desc=True).limit(100)
     
     else: # Historial Completo
-        # Limitamos a 10.000 registros para evitar que el navegador colapse si tienes meses de datos
+        # Limitamos a 10.000 registros para evitar que el navegador colapse si tienes muchos meses de datos
         query = query.order("created_at", desc=False).limit(10000) 
         
     response = query.execute()
@@ -82,7 +83,7 @@ with col_boton:
     if st.button("🔄 Actualizar Datos", use_container_width=True):
         st.rerun()
 
-# Obtener datos según el filtro
+# Obtener datos según el filtro seleccionado
 df = fetch_data(filtro_tiempo, start_date, end_date)
 
 if not df.empty:
@@ -119,8 +120,32 @@ if not df.empty:
         st.line_chart(data=df, x="created_at", y="pressure", color="#00D2FF")
         
     with tab3:
-        st.markdown("**Comportamiento del Viento (m/s)**")
-        st.bar_chart(data=df, x="created_at", y="wind_speed", color="#778899")
+        st.markdown("**Comportamiento del Viento (m/s) con Promedio Móvil**")
+        
+        # Control interactivo para el promedio móvil
+        ventana = st.slider("Suavizado del Promedio Móvil (N° de lecturas)", min_value=2, max_value=60, value=15)
+        
+        # Calcular el promedio móvil en el DataFrame
+        df["Promedio Móvil"] = df["wind_speed"].rolling(window=ventana, min_periods=1).mean()
+        
+        # Capa base del gráfico
+        base = alt.Chart(df).encode(
+            x=alt.X("created_at:T", title="Hora")
+        )
+        
+        # Capa de las barras (Viento crudo)
+        barras = base.mark_bar(color="#778899", opacity=0.6).encode(
+            y=alt.Y("wind_speed:Q", title="Velocidad (m/s)")
+        )
+        
+        # Capa de la línea (Promedio móvil)
+        linea = base.mark_line(color="#FF4B4B", size=3).encode(
+            y=alt.Y("Promedio Móvil:Q")
+        )
+        
+        # Superponer capas y mostrar
+        grafico_viento = alt.layer(barras, linea).interactive()
+        st.altair_chart(grafico_viento, use_container_width=True)
 
     # 3. TABLA CRUDA
     with st.expander("📄 Ver registros del periodo seleccionado"):
