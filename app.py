@@ -117,7 +117,14 @@ if not df.empty:
         
     with tab2:
         st.markdown("**Presión Atmosférica (hPa)**")
-        st.line_chart(data=df, x="created_at", y="pressure", color="#00D2FF")
+        
+        # <-- GRÁFICO DE PRESIÓN CON ALTAIR (Auto-ajustable)
+        grafico_presion = alt.Chart(df).mark_line(color="#00D2FF", size=3).encode(
+            x=alt.X("created_at:T", title="Hora"),
+            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)) # El autoajuste
+        ).interactive()
+        
+        st.altair_chart(grafico_presion, use_container_width=True)
         
     with tab3:
         st.markdown("**Comportamiento del Viento (m/s) con Promedio Móvil**")
