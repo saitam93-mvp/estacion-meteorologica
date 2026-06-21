@@ -40,7 +40,6 @@ if filtro_tiempo == "Rango de Fechas":
         max_value=date.today()
     )
     
-    # Validar que el usuario haya seleccionado inicio y fin
     if len(fechas) == 2:
         start_date, end_date = fechas
     else:
@@ -58,7 +57,6 @@ def fetch_data(filtro, start=None, end=None):
     elif filtro == "Últimos datos (Tiempo Real)":
         hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         query = query.gte("created_at", hace_24_hrs)
-        # Pedimos los más nuevos primero y subimos el límite a 10.000
         query = query.order("created_at", desc=True).limit(10000)
     
     else: 
@@ -69,7 +67,6 @@ def fetch_data(filtro, start=None, end=None):
     if response.data:
         df = pd.DataFrame(response.data)
         df["created_at"] = pd.to_datetime(df["created_at"])
-        # Volvemos a ordenar todo de viejo a nuevo para que el gráfico se lea correctamente de izquierda a derecha
         df = df.sort_values(by="created_at")
         return df
     return pd.DataFrame()
@@ -104,27 +101,37 @@ if not df.empty:
 
     st.divider()
 
-    # 2. GRÁFICOS
+    # 2. GRÁFICOS REORGANIZADOS
     st.subheader(f"📈 Visualización: {filtro_tiempo}")
     
-    tab1, tab2, tab3 = st.tabs(["Temperatura y Humedad", "Presión", "Viento"])
+    tab1, tab2, tab3 = st.tabs(["Temperatura", "Humedad y Presión", "Viento"])
     
     with tab1:
         st.markdown("**Evolución de la Temperatura (°C)**")
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
-        st.markdown("**Evolución de la Humedad (%)**")
-        st.line_chart(data=df, x="created_at", y="humidity", color="#0083B0")
         
     with tab2:
-        st.markdown("**Presión Atmosférica (hPa)**")
+        st.markdown("**Correlación: Humedad (%) vs Presión Atmosférica (hPa)**")
         
-        # <-- GRÁFICO DE PRESIÓN CON ALTAIR (Auto-ajustable)
-        grafico_presion = alt.Chart(df).mark_line(color="#00D2FF", size=3).encode(
-            x=alt.X("created_at:T", title="Hora"),
-            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)) # El autoajuste
+        # <-- GRÁFICO COMBINADO DE DOBLE EJE CON ALTAIR
+        base = alt.Chart(df).encode(
+            x=alt.X("created_at:T", title="Hora")
+        )
+
+        linea_humedad = base.mark_line(color="#0083B0", size=3).encode(
+            y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False))
+        )
+
+        linea_presion = base.mark_line(color="#FF8C00", size=3).encode(
+            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False))
+        )
+
+        # La instrucción "resolve_scale" es la que permite el doble eje Y independiente
+        grafico_mixto = alt.layer(linea_humedad, linea_presion).resolve_scale(
+            y='independent'
         ).interactive()
-        
-        st.altair_chart(grafico_presion, use_container_width=True)
+
+        st.altair_chart(grafico_mixto, use_container_width=True)
         
     with tab3:
         st.markdown("**Comportamiento del Viento (m/s) con Promedio Móvil**")
@@ -135,9 +142,9 @@ if not df.empty:
         
         df["Promedio Móvil"] = df["wind_speed"].rolling(window=ventana, min_periods=1).mean()
         
-        base = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
-        barras = base.mark_bar(color="#778899", opacity=0.6).encode(y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"))
-        linea = base.mark_line(color="#FF4B4B", size=3).encode(y=alt.Y("Promedio Móvil:Q"))
+        base_viento = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
+        barras = base_viento.mark_bar(color="#778899", opacity=0.6).encode(y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"))
+        linea = base_viento.mark_line(color="#FF4B4B", size=3).encode(y=alt.Y("Promedio Móvil:Q"))
         
         grafico_viento = alt.layer(barras, linea).interactive()
         
