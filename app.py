@@ -3,7 +3,6 @@ import pandas as pd
 import altair as alt
 from supabase import create_client, Client
 from datetime import date, timedelta, datetime
-from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -47,11 +46,6 @@ if filtro_tiempo == "Rango de Fechas":
     else:
         st.sidebar.warning("Por favor, selecciona también una fecha de término.")
         st.stop() 
-
-# --- AUTO-REFRESH (Solo para Tiempo Real) ---
-if filtro_tiempo == "Últimos datos (Tiempo Real)":
-    # Actualiza la página automáticamente cada 60.000 milisegundos (60 segundos)
-    st_autorefresh(interval=60000, limit=None, key="data_refresh")
 
 # --- FUNCIÓN DE EXTRACCIÓN DE DATOS ---
 def fetch_data(filtro, start=None, end=None):
