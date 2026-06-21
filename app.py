@@ -111,9 +111,11 @@ if not df.empty:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
-        st.markdown("**Correlación: Humedad (%) vs Presión Atmosférica (hPa)**")
+        st.markdown("**Correlación Atmosférica**")
         
-        # <-- GRÁFICO COMBINADO DE DOBLE EJE CON ALTAIR
+        # <-- LEYENDA VISUAL AGREGADA AQUÍ
+        st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>🔵 Línea Azul: Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>🟠 Línea Naranja: Presión (hPa)</span></h5>", unsafe_allow_html=True)
+        
         base = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora")
         )
@@ -126,7 +128,6 @@ if not df.empty:
             y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False))
         )
 
-        # La instrucción "resolve_scale" es la que permite el doble eje Y independiente
         grafico_mixto = alt.layer(linea_humedad, linea_presion).resolve_scale(
             y='independent'
         ).interactive()
