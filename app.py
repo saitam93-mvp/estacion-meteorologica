@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from supabase import create_client, Client
-from datetime import date, timedelta, datetime # <-- Agregamos datetime aquí
+from datetime import date, timedelta, datetime
+from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -47,29 +48,35 @@ if filtro_tiempo == "Rango de Fechas":
         st.sidebar.warning("Por favor, selecciona también una fecha de término.")
         st.stop() 
 
+# --- AUTO-REFRESH (Solo para Tiempo Real) ---
+if filtro_tiempo == "Últimos datos (Tiempo Real)":
+    # Actualiza la página automáticamente cada 60.000 milisegundos (60 segundos)
+    st_autorefresh(interval=60000, limit=None, key="data_refresh")
+
 # --- FUNCIÓN DE EXTRACCIÓN DE DATOS ---
 def fetch_data(filtro, start=None, end=None):
     query = supabase.table("weather_data").select("*")
     
     if filtro == "Rango de Fechas" and start and end:
         query = query.gte("created_at", f"{start}T00:00:00").lte("created_at", f"{end}T23:59:59")
-        query = query.order("created_at", desc=False)
+        query = query.order("created_at", desc=False).limit(10000)
     
     elif filtro == "Últimos datos (Tiempo Real)":
-        # <-- NUEVA LÓGICA: Calculamos exactamente 24 horas hacia atrás
-        # Usamos utcnow() porque Supabase guarda las horas en formato UTC por defecto
         hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         query = query.gte("created_at", hace_24_hrs)
-        query = query.order("created_at", desc=False) # Lo pedimos ya ordenado cronológicamente
+        # Pedimos los más nuevos primero y subimos el límite a 10.000
+        query = query.order("created_at", desc=True).limit(10000)
     
     else: 
-        query = query.order("created_at", desc=False).limit(10000) 
+        query = query.order("created_at", desc=True).limit(10000) 
         
     response = query.execute()
     
     if response.data:
         df = pd.DataFrame(response.data)
         df["created_at"] = pd.to_datetime(df["created_at"])
+        # Volvemos a ordenar todo de viejo a nuevo para que el gráfico se lea correctamente de izquierda a derecha
+        df = df.sort_values(by="created_at")
         return df
     return pd.DataFrame()
 
