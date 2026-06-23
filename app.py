@@ -15,7 +15,6 @@ st.set_page_config(
 SUPABASE_URL = "https://qtzckgfxdbuudokoobim.supabase.co"
 SUPABASE_KEY = "sb_publishable_k3bPaqbhMmhUnY8XaqaLKg_lq8tI-RE"
 
-# Inicializar cliente de Supabase optimizado con caché
 @st.cache_resource
 def init_connection():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -29,7 +28,6 @@ filtro_tiempo = st.sidebar.radio(
     ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas")
 )
 
-# Variables para el calendario
 start_date = None
 end_date = None
 
@@ -46,34 +44,72 @@ if filtro_tiempo == "Rango de Fechas":
         st.sidebar.warning("Por favor, selecciona también una fecha de término.")
         st.stop() 
 
-# --- FUNCIÓN DE EXTRACCIÓN DE DATOS ---
+# --- FUNCIÓN DE EXTRACCIÓN Y COMPRESIÓN DE DATOS ---
 def fetch_data(filtro, start=None, end=None):
     query = supabase.table("weather_data").select("*")
     
+    # 1. Filtros de Tiempo
     if filtro == "Rango de Fechas" and start and end:
         query = query.gte("created_at", f"{start}T00:00:00").lte("created_at", f"{end}T23:59:59")
-        query = query.order("created_at", desc=False).limit(10000)
-    
     elif filtro == "Últimos datos (Tiempo Real)":
         hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         query = query.gte("created_at", hace_24_hrs)
-        query = query.order("created_at", desc=True).limit(10000)
     
-    else: 
-        query = query.order("created_at", desc=True).limit(10000) 
+    # Siempre ordenamos ascendente para la paginación
+    query = query.order("created_at", desc=False)
+    
+    # 2. Paginación: Burlar el límite de 1000 filas de Supabase
+    all_data = []
+    chunk_size = 1000
+    offset = 0
+    
+    # Límite de seguridad: máximo 50.000 filas por consulta para no agotar la RAM
+    while offset < 50000:
+        res = query.range(offset, offset + chunk_size - 1).execute()
+        if not res.data:
+            break
+        all_data.extend(res.data)
+        if len(res.data) < chunk_size:
+            break
+        offset += chunk_size
+
+    # 3. Procesamiento
+    if all_data:
+        df = pd.DataFrame(all_data)
         
-    response = query.execute()
-    
-    if response.data:
-        df = pd.DataFrame(response.data)
+        # Ajuste de Zona Horaria a Chile
         df["created_at"] = pd.to_datetime(df["created_at"])
+        if df["created_at"].dt.tz is None:
+            df["created_at"] = df["created_at"].dt.tz_localize("UTC")
+        df["created_at"] = df["created_at"].dt.tz_convert("America/Santiago").dt.tz_localize(None)
+        
         df = df.sort_values(by="created_at")
+        
+        # 4. COMPRESIÓN INTELIGENTE (Agrupación / Resample)
+        df.set_index("created_at", inplace=True)
+        total_filas = len(df)
+        
+        cols_numericas = ["temperature", "humidity", "pressure", "wind_speed"]
+        if "co2" in df.columns:
+            cols_numericas.append("co2")
+            
+        df_num = df[cols_numericas]
+        
+        if total_filas > 10000:
+            # Más de 3-4 días: Promediamos por cada hora
+            df = df_num.resample("1h").mean().dropna().reset_index()
+        elif total_filas > 2000:
+            # Un día completo o dos: Promediamos cada 10 minutos
+            df = df_num.resample("10min").mean().dropna().reset_index()
+        else:
+            # Pocas horas: Promediamos cada 2 minutos
+            df = df_num.resample("2min").mean().dropna().reset_index()
+            
         return df
+
     return pd.DataFrame()
 
 # --- INTERFAZ PRINCIPAL ---
-# (Títulos eliminados para una vista más limpia)
-
 col_titulo, col_boton = st.columns([8, 2])
 with col_boton:
     st.write("") 
@@ -87,17 +123,17 @@ if not df.empty:
     # 1. TARJETAS DE MÉTRICAS
     ultima_lectura = df.iloc[-1]
     fecha_local = ultima_lectura["created_at"].strftime("%d/%m/%Y %H:%M:%S")
-    st.caption(f"Última lectura del rango seleccionado: {fecha_local}")
+    st.caption(f"Última actualización (Datos promediados de la franja horaria): {fecha_local}")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("🌡️ Temperatura", f"{ultima_lectura['temperature']:.1f} °C" if pd.notna(ultima_lectura['temperature']) else "N/A")
+        st.metric("🌡️ Temperatura", f"{ultima_lectura['temperature']:.1f} °C")
     with col2:
-        st.metric("💧 Humedad", f"{ultima_lectura['humidity']:.1f} %" if pd.notna(ultima_lectura['humidity']) else "N/A")
+        st.metric("💧 Humedad", f"{ultima_lectura['humidity']:.1f} %")
     with col3:
-        st.metric("💨 Viento", f"{ultima_lectura['wind_speed']:.1f} m/s" if pd.notna(ultima_lectura['wind_speed']) else "0.0 m/s")
+        st.metric("💨 Viento", f"{ultima_lectura['wind_speed']:.1f} m/s")
     with col4:
-        st.metric("📉 Presión", f"{ultima_lectura['pressure']:.1f} hPa" if pd.notna(ultima_lectura['pressure']) else "N/A")
+        st.metric("📉 Presión", f"{ultima_lectura['pressure']:.1f} hPa")
 
     st.divider()
 
@@ -105,13 +141,9 @@ if not df.empty:
     tab1, tab2, tab3 = st.tabs(["Temperatura", "Humedad y Presión", "Viento"])
     
     with tab1:
-        st.markdown("**Evolución de la Temperatura (°C)**")
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
-        st.markdown("**Correlación Atmosférica**")
-        
-        # <-- LEYENDA VISUAL SIMPLIFICADA
         st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
         
         base = alt.Chart(df).encode(
@@ -133,11 +165,9 @@ if not df.empty:
         st.altair_chart(grafico_mixto, use_container_width=True)
         
     with tab3:
-        st.markdown("**Comportamiento del Viento (m/s) con Promedio Móvil**")
-        
         espacio_grafico = st.empty()
         
-        ventana = st.slider("Suavizado del Promedio Móvil (N° de lecturas)", min_value=2, max_value=60, value=15)
+        ventana = st.slider("Suavizado del Promedio Móvil (N° de lecturas grupales)", min_value=2, max_value=60, value=15)
         
         df["Promedio Móvil"] = df["wind_speed"].rolling(window=ventana, min_periods=1).mean()
         
