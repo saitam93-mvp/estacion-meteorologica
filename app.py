@@ -21,8 +21,16 @@ def init_connection():
 
 supabase = init_connection()
 
-# --- BARRA LATERAL (FILTROS) ---
-st.sidebar.title("⚙️ Filtros de Tiempo")
+# --- BARRA LATERAL (FILTROS Y CONTROLES) ---
+st.sidebar.title("⚙️ Controles")
+
+# <-- BOTÓN DE ACTUALIZAR MOVIDO A LA BARRA LATERAL
+if st.sidebar.button("🔄 Actualizar Datos", use_container_width=True):
+    st.rerun()
+
+st.sidebar.divider()
+
+st.sidebar.subheader("Filtros de Tiempo")
 filtro_tiempo = st.sidebar.radio(
     "Selecciona qué datos visualizar:",
     ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas")
@@ -107,11 +115,7 @@ def fetch_data(filtro, start=None, end=None):
     return pd.DataFrame()
 
 # --- INTERFAZ PRINCIPAL ---
-col_titulo, col_boton = st.columns([8, 2])
-with col_boton:
-    st.write("") 
-    if st.button("🔄 Actualizar Datos", use_container_width=True):
-        st.rerun()
+st.title("🌤️ Panel de Monitoreo - Estación Meteorológica")
 
 # Obtener datos
 df = fetch_data(filtro_tiempo, start_date, end_date)
@@ -147,7 +151,6 @@ if not df.empty:
             x=alt.X("created_at:T", title="Hora")
         )
 
-        # <-- AQUÍ AGREGAMOS LOS TOOLTIPS PARA QUE SEAN VISIBLES AL PASAR EL MOUSE
         linea_humedad = base.mark_line(color="#0083B0", size=3).encode(
             y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False)),
             tooltip=[
