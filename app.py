@@ -24,7 +24,6 @@ supabase = init_connection()
 # --- BARRA LATERAL (FILTROS Y CONTROLES) ---
 st.sidebar.title("⚙️ Controles")
 
-# <-- BOTÓN DE ACTUALIZAR MOVIDO A LA BARRA LATERAL
 if st.sidebar.button("🔄 Actualizar Datos", use_container_width=True):
     st.rerun()
 
@@ -115,7 +114,7 @@ def fetch_data(filtro, start=None, end=None):
     return pd.DataFrame()
 
 # --- INTERFAZ PRINCIPAL ---
-st.title("🌤️ Panel de Monitoreo - Estación Meteorológica")
+# (Título principal eliminado)
 
 # Obtener datos
 df = fetch_data(filtro_tiempo, start_date, end_date)
