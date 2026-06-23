@@ -63,7 +63,7 @@ def fetch_data(filtro, start=None, end=None):
     chunk_size = 1000
     offset = 0
     
-    # Límite de seguridad: máximo 50.000 filas por consulta para no agotar la RAM
+    # Límite de seguridad: máximo 50.000 filas por consulta
     while offset < 50000:
         res = query.range(offset, offset + chunk_size - 1).execute()
         if not res.data:
@@ -77,7 +77,7 @@ def fetch_data(filtro, start=None, end=None):
     if all_data:
         df = pd.DataFrame(all_data)
         
-        # Ajuste de Zona Horaria a Chile
+        # Ajuste de Zona Horaria
         df["created_at"] = pd.to_datetime(df["created_at"])
         if df["created_at"].dt.tz is None:
             df["created_at"] = df["created_at"].dt.tz_localize("UTC")
@@ -85,7 +85,7 @@ def fetch_data(filtro, start=None, end=None):
         
         df = df.sort_values(by="created_at")
         
-        # 4. COMPRESIÓN INTELIGENTE (Agrupación / Resample)
+        # 4. COMPRESIÓN INTELIGENTE
         df.set_index("created_at", inplace=True)
         total_filas = len(df)
         
@@ -96,13 +96,10 @@ def fetch_data(filtro, start=None, end=None):
         df_num = df[cols_numericas]
         
         if total_filas > 10000:
-            # Más de 3-4 días: Promediamos por cada hora
             df = df_num.resample("1h").mean().dropna().reset_index()
         elif total_filas > 2000:
-            # Un día completo o dos: Promediamos cada 10 minutos
             df = df_num.resample("10min").mean().dropna().reset_index()
         else:
-            # Pocas horas: Promediamos cada 2 minutos
             df = df_num.resample("2min").mean().dropna().reset_index()
             
         return df
@@ -150,12 +147,21 @@ if not df.empty:
             x=alt.X("created_at:T", title="Hora")
         )
 
+        # <-- AQUÍ AGREGAMOS LOS TOOLTIPS PARA QUE SEAN VISIBLES AL PASAR EL MOUSE
         linea_humedad = base.mark_line(color="#0083B0", size=3).encode(
-            y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False))
+            y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False)),
+            tooltip=[
+                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
+                alt.Tooltip("humidity:Q", title="Humedad (%)", format=".1f")
+            ]
         )
 
         linea_presion = base.mark_line(color="#FF8C00", size=3).encode(
-            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False))
+            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
+            tooltip=[
+                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
+                alt.Tooltip("pressure:Q", title="Presión (hPa)", format=".1f")
+            ]
         )
 
         grafico_mixto = alt.layer(linea_humedad, linea_presion).resolve_scale(
