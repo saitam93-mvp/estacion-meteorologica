@@ -72,7 +72,7 @@ def fetch_data(filtro, start=None, end=None):
     return pd.DataFrame()
 
 # --- INTERFAZ PRINCIPAL ---
-st.title("🌤️ Panel de Monitoreo - Estación Meteorológica")
+# (Títulos eliminados para una vista más limpia)
 
 col_titulo, col_boton = st.columns([8, 2])
 with col_boton:
@@ -102,8 +102,6 @@ if not df.empty:
     st.divider()
 
     # 2. GRÁFICOS REORGANIZADOS
-    st.subheader(f"📈 Visualización: {filtro_tiempo}")
-    
     tab1, tab2, tab3 = st.tabs(["Temperatura", "Humedad y Presión", "Viento"])
     
     with tab1:
@@ -113,8 +111,8 @@ if not df.empty:
     with tab2:
         st.markdown("**Correlación Atmosférica**")
         
-        # <-- LEYENDA VISUAL AGREGADA AQUÍ
-        st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>🔵 Línea Azul: Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>🟠 Línea Naranja: Presión (hPa)</span></h5>", unsafe_allow_html=True)
+        # <-- LEYENDA VISUAL SIMPLIFICADA
+        st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
         
         base = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora")
