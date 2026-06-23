@@ -114,9 +114,6 @@ def fetch_data(filtro, start=None, end=None):
     return pd.DataFrame()
 
 # --- INTERFAZ PRINCIPAL ---
-# (Título principal eliminado)
-
-# Obtener datos
 df = fetch_data(filtro_tiempo, start_date, end_date)
 
 if not df.empty:
@@ -173,19 +170,17 @@ if not df.empty:
         st.altair_chart(grafico_mixto, use_container_width=True)
         
     with tab3:
-        espacio_grafico = st.empty()
+        # <-- EL ARREGLO: Gráfico de viento limpio sin línea ni slider
+        grafico_viento = alt.Chart(df).encode(
+            x=alt.X("created_at:T", title="Hora"),
+            y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"),
+            tooltip=[
+                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
+                alt.Tooltip("wind_speed:Q", title="Velocidad (m/s)", format=".1f")
+            ]
+        ).mark_bar(color="#778899", opacity=0.8).interactive()
         
-        ventana = st.slider("Suavizado del Promedio Móvil (N° de lecturas grupales)", min_value=2, max_value=60, value=15)
-        
-        df["Promedio Móvil"] = df["wind_speed"].rolling(window=ventana, min_periods=1).mean()
-        
-        base_viento = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
-        barras = base_viento.mark_bar(color="#778899", opacity=0.6).encode(y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"))
-        linea = base_viento.mark_line(color="#FF4B4B", size=3).encode(y=alt.Y("Promedio Móvil:Q"))
-        
-        grafico_viento = alt.layer(barras, linea).interactive()
-        
-        espacio_grafico.altair_chart(grafico_viento, use_container_width=True)
+        st.altair_chart(grafico_viento, use_container_width=True)
 
     # 3. TABLA CRUDA
     with st.expander("📄 Ver registros del periodo seleccionado"):
