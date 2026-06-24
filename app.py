@@ -30,22 +30,27 @@ if st.sidebar.button("🔄 Actualizar Datos", use_container_width=True):
 st.sidebar.divider()
 
 st.sidebar.subheader("Filtros de Tiempo")
+
+# <-- SOLUCIÓN: Agregamos 'key' para congelar el estado del radio button
 filtro_tiempo = st.sidebar.radio(
     "Selecciona qué datos visualizar:",
-    ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas")
+    ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas"),
+    key="filtro_tiempo_estacion"
 )
 
 start_date = None
 end_date = None
 
 if filtro_tiempo == "Rango de Fechas":
+    # <-- SOLUCIÓN: Agregamos 'key' para congelar el rango de fechas en el session_state
     fechas = st.sidebar.date_input(
         "Selecciona el rango en el calendario:",
         value=(date.today() - timedelta(days=1), date.today()), 
-        max_value=date.today()
+        max_value=date.today(),
+        key="rango_fechas_estacion"
     )
     
-    if len(fechas) == 2:
+    if isinstance(fechas, tuple) and len(fechas) == 2:
         start_date, end_date = fechas
     else:
         st.sidebar.warning("Por favor, selecciona también una fecha de término.")
@@ -134,7 +139,6 @@ if not df.empty:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
-        # Gráfico fijo de Humedad y Presión restituido
         st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
         
         base_fija = alt.Chart(df).encode(
@@ -149,7 +153,7 @@ if not df.empty:
             ]
         )
 
-        linea_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
+        line_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
             y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
             tooltip=[
                 alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
@@ -176,7 +180,6 @@ if not df.empty:
         st.altair_chart(grafico_viento, use_container_width=True)
 
     with tab4:
-        # --- DICCIONARIO DE MÉTRICAS PARA EL SELECTOR ---
         opciones_metricas = {
             "Temperatura (°C)": {"col": "temperature", "color": "#FF4B4B"},
             "Humedad (%)": {"col": "humidity", "color": "#0083B0"},
@@ -184,7 +187,6 @@ if not df.empty:
             "Velocidad del Viento (m/s)": {"col": "wind_speed", "color": "#778899"}
         }
         
-        # --- SELECTORES DE INTERFAZ ---
         col_sel1, col_sel2 = st.columns(2)
         with col_sel1:
             eje_izq = st.selectbox("Eje Izquierdo (Línea Principal):", list(opciones_metricas.keys()), index=0)
@@ -192,14 +194,12 @@ if not df.empty:
             opciones_der = ["Ninguna"] + [m for m in opciones_metricas.keys() if m != eje_izq]
             eje_der = st.selectbox("Eje Derecho (Línea Secundaria):", opciones_der, index=1)
             
-        st.write("") # Espaciador
+        st.write("") 
         
-        # --- CONSTRUCCIÓN DEL GRÁFICO DINÁMICO ---
         base_dinamica = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora")
         )
 
-        # Línea 1 (Siempre visible)
         col_1 = opciones_metricas[eje_izq]["col"]
         color_1 = opciones_metricas[eje_izq]["color"]
         
@@ -211,7 +211,6 @@ if not df.empty:
             ]
         )
 
-        # Si el usuario selecciona una segunda métrica, creamos el doble eje
         if eje_der != "Ninguna":
             col_2 = opciones_metricas[eje_der]["col"]
             color_2 = opciones_metricas[eje_der]["color"]
@@ -224,18 +223,13 @@ if not df.empty:
                 ]
             )
             
-            # Unir ambas líneas con escalas independientes
             grafico_mixto = alt.layer(linea_1, linea_2).resolve_scale(y='independent').interactive()
             
-            # Leyenda dinámica doble
             st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: {color_2};'>{eje_der}</span></h5>", unsafe_allow_html=True)
             st.altair_chart(grafico_mixto, use_container_width=True)
             
         else:
-            # Si solo quiere ver una métrica
             grafico_simple = linea_1.interactive()
-            
-            # Leyenda dinámica simple
             st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span></h5>", unsafe_allow_html=True)
             st.altair_chart(grafico_simple, use_container_width=True)
 
