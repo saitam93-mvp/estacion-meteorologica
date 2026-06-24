@@ -31,7 +31,7 @@ st.sidebar.divider()
 
 st.sidebar.subheader("Filtros de Tiempo")
 
-# <-- SOLUCIÓN: Agregamos 'key' para congelar el estado del radio button
+# Agregamos 'key' para congelar el estado del radio button
 filtro_tiempo = st.sidebar.radio(
     "Selecciona qué datos visualizar:",
     ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas"),
@@ -42,7 +42,7 @@ start_date = None
 end_date = None
 
 if filtro_tiempo == "Rango de Fechas":
-    # <-- SOLUCIÓN: Agregamos 'key' para congelar el rango de fechas en el session_state
+    # Agregamos 'key' para congelar el rango de fechas en el session_state
     fechas = st.sidebar.date_input(
         "Selecciona el rango en el calendario:",
         value=(date.today() - timedelta(days=1), date.today()), 
@@ -153,7 +153,8 @@ if not df.empty:
             ]
         )
 
-        line_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
+        # <-- AQUÍ ESTABA EL ERROR: Cambié line_pres_fija por linea_pres_fija
+        linea_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
             y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
             tooltip=[
                 alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
