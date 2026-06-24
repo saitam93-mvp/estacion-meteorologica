@@ -55,22 +55,18 @@ if filtro_tiempo == "Rango de Fechas":
 def fetch_data(filtro, start=None, end=None):
     query = supabase.table("weather_data").select("*")
     
-    # 1. Filtros de Tiempo
     if filtro == "Rango de Fechas" and start and end:
         query = query.gte("created_at", f"{start}T00:00:00").lte("created_at", f"{end}T23:59:59")
     elif filtro == "Últimos datos (Tiempo Real)":
         hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         query = query.gte("created_at", hace_24_hrs)
     
-    # Siempre ordenamos ascendente para la paginación
     query = query.order("created_at", desc=False)
     
-    # 2. Paginación: Burlar el límite de 1000 filas de Supabase
     all_data = []
     chunk_size = 1000
     offset = 0
     
-    # Límite de seguridad: máximo 50.000 filas por consulta
     while offset < 50000:
         res = query.range(offset, offset + chunk_size - 1).execute()
         if not res.data:
@@ -80,11 +76,9 @@ def fetch_data(filtro, start=None, end=None):
             break
         offset += chunk_size
 
-    # 3. Procesamiento
     if all_data:
         df = pd.DataFrame(all_data)
         
-        # Ajuste de Zona Horaria
         df["created_at"] = pd.to_datetime(df["created_at"])
         if df["created_at"].dt.tz is None:
             df["created_at"] = df["created_at"].dt.tz_localize("UTC")
@@ -92,7 +86,6 @@ def fetch_data(filtro, start=None, end=None):
         
         df = df.sort_values(by="created_at")
         
-        # 4. COMPRESIÓN INTELIGENTE
         df.set_index("created_at", inplace=True)
         total_filas = len(df)
         
@@ -135,42 +128,76 @@ if not df.empty:
     st.divider()
 
     # 2. GRÁFICOS REORGANIZADOS
-    tab1, tab2, tab3 = st.tabs(["Temperatura", "Humedad y Presión", "Viento"])
+    tab1, tab2, tab3 = st.tabs(["Temperatura", "Comparador Dinámico", "Viento"])
     
     with tab1:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
-        st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
+        # --- DICCIONARIO DE MÉTRICAS PARA EL SELECTOR ---
+        opciones_metricas = {
+            "Temperatura (°C)": {"col": "temperature", "color": "#FF4B4B"},
+            "Humedad (%)": {"col": "humidity", "color": "#0083B0"},
+            "Presión Atmosférica (hPa)": {"col": "pressure", "color": "#FF8C00"},
+            "Velocidad del Viento (m/s)": {"col": "wind_speed", "color": "#778899"}
+        }
         
+        # --- SELECTORES DE INTERFAZ ---
+        col_sel1, col_sel2 = st.columns(2)
+        with col_sel1:
+            eje_izq = st.selectbox("Eje Izquierdo (Línea Principal):", list(opciones_metricas.keys()), index=1)
+        with col_sel2:
+            opciones_der = ["Ninguna"] + [m for m in opciones_metricas.keys() if m != eje_izq]
+            eje_der = st.selectbox("Eje Derecho (Línea Secundaria):", opciones_der, index=1)
+            
+        st.write("") # Espaciador
+        
+        # --- CONSTRUCCIÓN DEL GRÁFICO DINÁMICO ---
         base = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora")
         )
 
-        linea_humedad = base.mark_line(color="#0083B0", size=3).encode(
-            y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False)),
+        # Línea 1 (Siempre visible)
+        col_1 = opciones_metricas[eje_izq]["col"]
+        color_1 = opciones_metricas[eje_izq]["color"]
+        
+        linea_1 = base.mark_line(color=color_1, size=3).encode(
+            y=alt.Y(f"{col_1}:Q", title=eje_izq, scale=alt.Scale(zero=False)),
             tooltip=[
                 alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
-                alt.Tooltip("humidity:Q", title="Humedad (%)", format=".1f")
+                alt.Tooltip(f"{col_1}:Q", title=eje_izq, format=".1f")
             ]
         )
 
-        linea_presion = base.mark_line(color="#FF8C00", size=3).encode(
-            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
-            tooltip=[
-                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
-                alt.Tooltip("pressure:Q", title="Presión (hPa)", format=".1f")
-            ]
-        )
-
-        grafico_mixto = alt.layer(linea_humedad, linea_presion).resolve_scale(
-            y='independent'
-        ).interactive()
-
-        st.altair_chart(grafico_mixto, use_container_width=True)
+        # Si el usuario selecciona una segunda métrica, creamos el doble eje
+        if eje_der != "Ninguna":
+            col_2 = opciones_metricas[eje_der]["col"]
+            color_2 = opciones_metricas[eje_der]["color"]
+            
+            linea_2 = base.mark_line(color=color_2, size=3).encode(
+                y=alt.Y(f"{col_2}:Q", title=eje_der, scale=alt.Scale(zero=False)),
+                tooltip=[
+                    alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
+                    alt.Tooltip(f"{col_2}:Q", title=eje_der, format=".1f")
+                ]
+            )
+            
+            # Unir ambas líneas con escalas independientes
+            grafico_mixto = alt.layer(linea_1, linea_2).resolve_scale(y='independent').interactive()
+            
+            # Leyenda dinámica doble
+            st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: {color_2};'>{eje_der}</span></h5>", unsafe_allow_html=True)
+            st.altair_chart(grafico_mixto, use_container_width=True)
+            
+        else:
+            # Si solo quiere ver una métrica
+            grafico_simple = linea_1.interactive()
+            
+            # Leyenda dinámica simple
+            st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span></h5>", unsafe_allow_html=True)
+            st.altair_chart(grafico_simple, use_container_width=True)
         
     with tab3:
-        # <-- EL ARREGLO: Gráfico de viento limpio sin línea ni slider
         grafico_viento = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora"),
             y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"),
