@@ -21,17 +21,26 @@ def init_connection():
 
 supabase = init_connection()
 
+# --- ESTADO DE LA SESIÓN ---
+# Inicializamos las variables en la memoria temporal si no existen
+if "filtro_tiempo_estacion" not in st.session_state:
+    st.session_state["filtro_tiempo_estacion"] = "Últimos datos (Tiempo Real)"
+if "rango_fechas_estacion" not in st.session_state:
+    st.session_state["rango_fechas_estacion"] = (date.today() - timedelta(days=1), date.today())
+
 # --- BARRA LATERAL (FILTROS Y CONTROLES) ---
 st.sidebar.title("⚙️ Controles")
 
+# <-- EL ARREGLO: El botón reinicia el estado antes de recargar
 if st.sidebar.button("🔄 Actualizar Datos", use_container_width=True):
+    st.session_state["filtro_tiempo_estacion"] = "Últimos datos (Tiempo Real)"
+    st.session_state["rango_fechas_estacion"] = (date.today() - timedelta(days=1), date.today())
     st.rerun()
 
 st.sidebar.divider()
 
 st.sidebar.subheader("Filtros de Tiempo")
 
-# Agregamos 'key' para congelar el estado del radio button
 filtro_tiempo = st.sidebar.radio(
     "Selecciona qué datos visualizar:",
     ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas"),
@@ -42,10 +51,8 @@ start_date = None
 end_date = None
 
 if filtro_tiempo == "Rango de Fechas":
-    # Agregamos 'key' para congelar el rango de fechas en el session_state
     fechas = st.sidebar.date_input(
         "Selecciona el rango en el calendario:",
-        value=(date.today() - timedelta(days=1), date.today()), 
         max_value=date.today(),
         key="rango_fechas_estacion"
     )
@@ -153,7 +160,6 @@ if not df.empty:
             ]
         )
 
-        # <-- AQUÍ ESTABA EL ERROR: Cambié line_pres_fija por linea_pres_fija
         linea_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
             y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
             tooltip=[
