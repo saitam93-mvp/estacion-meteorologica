@@ -127,13 +127,55 @@ if not df.empty:
 
     st.divider()
 
-    # 2. GRÁFICOS REORGANIZADOS
-    tab1, tab2, tab3 = st.tabs(["Temperatura", "Comparador Dinámico", "Viento"])
+    # 2. GRÁFICOS REORGANIZADOS EN 4 PESTAÑAS
+    tab1, tab2, tab3, tab4 = st.tabs(["Temperatura", "Humedad y Presión", "Viento", "Comparador Dinámico"])
     
     with tab1:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
+        # Gráfico fijo de Humedad y Presión restituido
+        st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
+        
+        base_fija = alt.Chart(df).encode(
+            x=alt.X("created_at:T", title="Hora")
+        )
+
+        linea_hum_fija = base_fija.mark_line(color="#0083B0", size=3).encode(
+            y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False)),
+            tooltip=[
+                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
+                alt.Tooltip("humidity:Q", title="Humedad (%)", format=".1f")
+            ]
+        )
+
+        linea_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
+            y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
+            tooltip=[
+                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
+                alt.Tooltip("pressure:Q", title="Presión (hPa)", format=".1f")
+            ]
+        )
+
+        grafico_fijo_mixto = alt.layer(linea_hum_fija, linea_pres_fija).resolve_scale(
+            y='independent'
+        ).interactive()
+
+        st.altair_chart(grafico_fijo_mixto, use_container_width=True)
+        
+    with tab3:
+        grafico_viento = alt.Chart(df).encode(
+            x=alt.X("created_at:T", title="Hora"),
+            y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"),
+            tooltip=[
+                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
+                alt.Tooltip("wind_speed:Q", title="Velocidad (m/s)", format=".1f")
+            ]
+        ).mark_bar(color="#778899", opacity=0.8).interactive()
+        
+        st.altair_chart(grafico_viento, use_container_width=True)
+
+    with tab4:
         # --- DICCIONARIO DE MÉTRICAS PARA EL SELECTOR ---
         opciones_metricas = {
             "Temperatura (°C)": {"col": "temperature", "color": "#FF4B4B"},
@@ -145,7 +187,7 @@ if not df.empty:
         # --- SELECTORES DE INTERFAZ ---
         col_sel1, col_sel2 = st.columns(2)
         with col_sel1:
-            eje_izq = st.selectbox("Eje Izquierdo (Línea Principal):", list(opciones_metricas.keys()), index=1)
+            eje_izq = st.selectbox("Eje Izquierdo (Línea Principal):", list(opciones_metricas.keys()), index=0)
         with col_sel2:
             opciones_der = ["Ninguna"] + [m for m in opciones_metricas.keys() if m != eje_izq]
             eje_der = st.selectbox("Eje Derecho (Línea Secundaria):", opciones_der, index=1)
@@ -153,7 +195,7 @@ if not df.empty:
         st.write("") # Espaciador
         
         # --- CONSTRUCCIÓN DEL GRÁFICO DINÁMICO ---
-        base = alt.Chart(df).encode(
+        base_dinamica = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora")
         )
 
@@ -161,7 +203,7 @@ if not df.empty:
         col_1 = opciones_metricas[eje_izq]["col"]
         color_1 = opciones_metricas[eje_izq]["color"]
         
-        linea_1 = base.mark_line(color=color_1, size=3).encode(
+        linea_1 = base_dinamica.mark_line(color=color_1, size=3).encode(
             y=alt.Y(f"{col_1}:Q", title=eje_izq, scale=alt.Scale(zero=False)),
             tooltip=[
                 alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
@@ -174,7 +216,7 @@ if not df.empty:
             col_2 = opciones_metricas[eje_der]["col"]
             color_2 = opciones_metricas[eje_der]["color"]
             
-            linea_2 = base.mark_line(color=color_2, size=3).encode(
+            linea_2 = base_dinamica.mark_line(color=color_2, size=3).encode(
                 y=alt.Y(f"{col_2}:Q", title=eje_der, scale=alt.Scale(zero=False)),
                 tooltip=[
                     alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
@@ -196,18 +238,6 @@ if not df.empty:
             # Leyenda dinámica simple
             st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span></h5>", unsafe_allow_html=True)
             st.altair_chart(grafico_simple, use_container_width=True)
-        
-    with tab3:
-        grafico_viento = alt.Chart(df).encode(
-            x=alt.X("created_at:T", title="Hora"),
-            y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"),
-            tooltip=[
-                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
-                alt.Tooltip("wind_speed:Q", title="Velocidad (m/s)", format=".1f")
-            ]
-        ).mark_bar(color="#778899", opacity=0.8).interactive()
-        
-        st.altair_chart(grafico_viento, use_container_width=True)
 
     # 3. TABLA CRUDA
     with st.expander("📄 Ver registros del periodo seleccionado"):
