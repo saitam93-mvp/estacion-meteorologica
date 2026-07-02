@@ -22,18 +22,16 @@ def init_connection():
 supabase = init_connection()
 
 # --- ESTADO DE LA SESIÓN ---
-# Inicializamos las variables en la memoria temporal si no existen
 if "filtro_tiempo_estacion" not in st.session_state:
-    st.session_state["filtro_tiempo_estacion"] = "Últimos datos (Tiempo Real)"
+    st.session_state["filtro_tiempo_estacion"] = "Último Día"
 if "rango_fechas_estacion" not in st.session_state:
     st.session_state["rango_fechas_estacion"] = (date.today() - timedelta(days=1), date.today())
 
 # --- BARRA LATERAL (FILTROS Y CONTROLES) ---
 st.sidebar.title("⚙️ Controles")
 
-# <-- EL ARREGLO: El botón reinicia el estado antes de recargar
 if st.sidebar.button("🔄 Actualizar Datos", use_container_width=True):
-    st.session_state["filtro_tiempo_estacion"] = "Últimos datos (Tiempo Real)"
+    st.session_state["filtro_tiempo_estacion"] = "Último Día"
     st.session_state["rango_fechas_estacion"] = (date.today() - timedelta(days=1), date.today())
     st.rerun()
 
@@ -41,9 +39,10 @@ st.sidebar.divider()
 
 st.sidebar.subheader("Filtros de Tiempo")
 
+# <-- NUEVAS OPCIONES: "Último Día" y "Última Semana"
 filtro_tiempo = st.sidebar.radio(
     "Selecciona qué datos visualizar:",
-    ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas"),
+    ("Último Día", "Última Semana", "Historial Completo", "Rango de Fechas"),
     key="filtro_tiempo_estacion"
 )
 
@@ -67,11 +66,15 @@ if filtro_tiempo == "Rango de Fechas":
 def fetch_data(filtro, start=None, end=None):
     query = supabase.table("weather_data").select("*")
     
+    # <-- LÓGICA ACTUALIZADA PARA LOS NUEVOS FILTROS
     if filtro == "Rango de Fechas" and start and end:
         query = query.gte("created_at", f"{start}T00:00:00").lte("created_at", f"{end}T23:59:59")
-    elif filtro == "Últimos datos (Tiempo Real)":
+    elif filtro == "Último Día":
         hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         query = query.gte("created_at", hace_24_hrs)
+    elif filtro == "Última Semana":
+        hace_7_dias = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        query = query.gte("created_at", hace_7_dias)
     
     query = query.order("created_at", desc=False)
     
