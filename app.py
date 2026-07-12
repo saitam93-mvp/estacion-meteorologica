@@ -21,18 +21,28 @@ def init_connection():
 
 supabase = init_connection()
 
+# --- ESTADO DE LA SESIÓN ---
+if "filtro_tiempo_estacion" not in st.session_state:
+    st.session_state["filtro_tiempo_estacion"] = "Último Día"
+if "rango_fechas_estacion" not in st.session_state:
+    st.session_state["rango_fechas_estacion"] = (date.today() - timedelta(days=1), date.today())
+
 # --- BARRA LATERAL (FILTROS Y CONTROLES) ---
 st.sidebar.title("⚙️ Controles")
 
 if st.sidebar.button("🔄 Actualizar Datos", use_container_width=True):
+    st.session_state["filtro_tiempo_estacion"] = "Último Día"
+    st.session_state["rango_fechas_estacion"] = (date.today() - timedelta(days=1), date.today())
     st.rerun()
 
 st.sidebar.divider()
 
 st.sidebar.subheader("Filtros de Tiempo")
+
 filtro_tiempo = st.sidebar.radio(
     "Selecciona qué datos visualizar:",
-    ("Últimos datos (Tiempo Real)", "Historial Completo", "Rango de Fechas")
+    ("Último Día", "Última Semana", "Historial Completo", "Rango de Fechas"),
+    key="filtro_tiempo_estacion"
 )
 
 start_date = None
@@ -41,11 +51,11 @@ end_date = None
 if filtro_tiempo == "Rango de Fechas":
     fechas = st.sidebar.date_input(
         "Selecciona el rango en el calendario:",
-        value=(date.today() - timedelta(days=1), date.today()), 
-        max_value=date.today()
+        max_value=date.today(),
+        key="rango_fechas_estacion"
     )
     
-    if len(fechas) == 2:
+    if isinstance(fechas, tuple) and len(fechas) == 2:
         start_date, end_date = fechas
     else:
         st.sidebar.warning("Por favor, selecciona también una fecha de término.")
@@ -55,22 +65,21 @@ if filtro_tiempo == "Rango de Fechas":
 def fetch_data(filtro, start=None, end=None):
     query = supabase.table("weather_data").select("*")
     
-    # 1. Filtros de Tiempo
     if filtro == "Rango de Fechas" and start and end:
         query = query.gte("created_at", f"{start}T00:00:00").lte("created_at", f"{end}T23:59:59")
-    elif filtro == "Últimos datos (Tiempo Real)":
+    elif filtro == "Último Día":
         hace_24_hrs = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         query = query.gte("created_at", hace_24_hrs)
+    elif filtro == "Última Semana":
+        hace_7_dias = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        query = query.gte("created_at", hace_7_dias)
     
-    # Siempre ordenamos ascendente para la paginación
     query = query.order("created_at", desc=False)
     
-    # 2. Paginación: Burlar el límite de 1000 filas de Supabase
     all_data = []
     chunk_size = 1000
     offset = 0
     
-    # Límite de seguridad: máximo 50.000 filas por consulta
     while offset < 50000:
         res = query.range(offset, offset + chunk_size - 1).execute()
         if not res.data:
@@ -80,23 +89,18 @@ def fetch_data(filtro, start=None, end=None):
             break
         offset += chunk_size
 
-    # 3. Procesamiento
     if all_data:
         df = pd.DataFrame(all_data)
         
-        # Ajuste de Zona Horaria
         df["created_at"] = pd.to_datetime(df["created_at"])
         if df["created_at"].dt.tz is None:
             df["created_at"] = df["created_at"].dt.tz_localize("UTC")
         df["created_at"] = df["created_at"].dt.tz_convert("America/Santiago").dt.tz_localize(None)
         
         df = df.sort_values(by="created_at")
-        
-        # 4. COMPRESIÓN INTELIGENTE
         df.set_index("created_at", inplace=True)
         total_filas = len(df)
         
-        # Agregamos TODAS las columnas nuevas a la lista de numéricas si existen
         cols_esperadas = ["temperature", "humidity", "pressure", "wind_speed", "co2", "pm1_0", "pm25", "pm10", "particulas_03um"]
         cols_numericas = [col for col in cols_esperadas if col in df.columns]
             
@@ -117,21 +121,16 @@ def fetch_data(filtro, start=None, end=None):
 df, columnas_activas = fetch_data(filtro_tiempo, start_date, end_date)
 
 if not df.empty:
-    # 1. TARJETAS DE MÉTRICAS (Clima + Calidad del Aire)
     ultima_lectura = df.iloc[-1]
     fecha_local = ultima_lectura["created_at"].strftime("%d/%m/%Y %H:%M:%S")
     st.caption(f"Última actualización (Datos promediados de la franja horaria): {fecha_local}")
     
     st.subheader("Condiciones Meteorológicas")
     col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("🌡️ Temperatura", f"{ultima_lectura['temperature']:.1f} °C")
-    with col2:
-        st.metric("💧 Humedad", f"{ultima_lectura['humidity']:.1f} %")
-    with col3:
-        st.metric("💨 Viento", f"{ultima_lectura['wind_speed']:.1f} m/s")
-    with col4:
-        st.metric("📉 Presión", f"{ultima_lectura['pressure']:.1f} hPa")
+    with col1: st.metric("🌡️ Temperatura", f"{ultima_lectura['temperature']:.1f} °C")
+    with col2: st.metric("💧 Humedad", f"{ultima_lectura['humidity']:.1f} %")
+    with col3: st.metric("💨 Viento", f"{ultima_lectura['wind_speed']:.1f} m/s")
+    with col4: st.metric("📉 Presión", f"{ultima_lectura['pressure']:.1f} hPa")
 
     st.divider()
     
@@ -150,61 +149,39 @@ if not df.empty:
 
     st.divider()
 
-    # 2. GRÁFICOS REORGANIZADOS CON NUEVAS PESTAÑAS
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Temperatura", "Humedad y Presión", "Viento", "Material Particulado", "CO2"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Temperatura", "Humedad y Presión", "Viento", "Material Particulado", "CO2", "Comparador Dinámico"])
     
     with tab1:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
         st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
-        
-        base = alt.Chart(df).encode(
-            x=alt.X("created_at:T", title="Hora")
-        )
-
-        linea_humedad = base.mark_line(color="#0083B0", size=3).encode(
+        base_fija = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
+        linea_hum_fija = base_fija.mark_line(color="#0083B0", size=3).encode(
             y=alt.Y("humidity:Q", title="Humedad (%)", scale=alt.Scale(zero=False)),
-            tooltip=[
-                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
-                alt.Tooltip("humidity:Q", title="Humedad (%)", format=".1f")
-            ]
+            tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip("humidity:Q", title="Humedad (%)", format=".1f")]
         )
-
-        linea_presion = base.mark_line(color="#FF8C00", size=3).encode(
+        linea_pres_fija = base_fija.mark_line(color="#FF8C00", size=3).encode(
             y=alt.Y("pressure:Q", title="Presión (hPa)", scale=alt.Scale(zero=False)),
-            tooltip=[
-                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), 
-                alt.Tooltip("pressure:Q", title="Presión (hPa)", format=".1f")
-            ]
+            tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip("pressure:Q", title="Presión (hPa)", format=".1f")]
         )
-
-        grafico_mixto = alt.layer(linea_humedad, linea_presion).resolve_scale(
-            y='independent'
-        ).interactive()
-
-        st.altair_chart(grafico_mixto, use_container_width=True)
+        grafico_fijo_mixto = alt.layer(linea_hum_fija, linea_pres_fija).resolve_scale(y='independent').interactive()
+        st.altair_chart(grafico_fijo_mixto, use_container_width=True)
         
     with tab3:
         grafico_viento = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora"),
             y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"),
-            tooltip=[
-                alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
-                alt.Tooltip("wind_speed:Q", title="Velocidad (m/s)", format=".1f")
-            ]
+            tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip("wind_speed:Q", title="Velocidad (m/s)", format=".1f")]
         ).mark_bar(color="#778899", opacity=0.8).interactive()
-        
         st.altair_chart(grafico_viento, use_container_width=True)
-        
+
     with tab4:
         st.markdown("<h5 style='text-align: center;'>Evolución de Material Particulado (µg/m³)</h5>", unsafe_allow_html=True)
         if all(col in df.columns for col in ["pm1_0", "pm25", "pm10"]):
-            # Preparamos el DataFrame para st.line_chart usando la fecha como índice
             df_pm = df[["created_at", "pm1_0", "pm25", "pm10"]].set_index("created_at")
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0 (Ultrafino)", "pm25": "PM 2.5 (Fino)", "pm10": "PM 10 (Grueso)"})
             st.line_chart(df_pm, color=["#FF4B4B", "#FFA15A", "#FFE24B"])
-            
             st.markdown("<br><h5 style='text-align: center;'>Densidad de Partículas (>0.3µm)</h5>", unsafe_allow_html=True)
             df_part = df[["created_at", "particulas_03um"]].set_index("created_at")
             st.area_chart(df_part, color="#636EFA")
@@ -219,12 +196,46 @@ if not df.empty:
         else:
             st.info("Esperando datos de CO2...")
 
-    # 3. TABLA CRUDA
+    with tab6:
+        opciones_metricas = {
+            "Temperatura (°C)": {"col": "temperature", "color": "#FF4B4B"},
+            "Humedad (%)": {"col": "humidity", "color": "#0083B0"},
+            "Presión (hPa)": {"col": "pressure", "color": "#FF8C00"},
+            "Viento (m/s)": {"col": "wind_speed", "color": "#778899"}
+        }
+        if "co2" in df.columns: opciones_metricas["CO2 (ppm)"] = {"col": "co2", "color": "#00C853"}
+        if "pm25" in df.columns: opciones_metricas["PM 2.5 (µg/m³)"] = {"col": "pm25", "color": "#FFA15A"}
+
+        col_sel1, col_sel2 = st.columns(2)
+        with col_sel1: eje_izq = st.selectbox("Eje Izquierdo:", list(opciones_metricas.keys()), index=0)
+        with col_sel2:
+            opciones_der = ["Ninguna"] + [m for m in opciones_metricas.keys() if m != eje_izq]
+            eje_der = st.selectbox("Eje Derecho:", opciones_der, index=1)
+            
+        st.write("") 
+        base_dinamica = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
+        col_1, color_1 = opciones_metricas[eje_izq]["col"], opciones_metricas[eje_izq]["color"]
+        
+        linea_1 = base_dinamica.mark_line(color=color_1, size=3).encode(
+            y=alt.Y(f"{col_1}:Q", title=eje_izq, scale=alt.Scale(zero=False)),
+            tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip(f"{col_1}:Q", title=eje_izq, format=".1f")]
+        )
+
+        if eje_der != "Ninguna":
+            col_2, color_2 = opciones_metricas[eje_der]["col"], opciones_metricas[eje_der]["color"]
+            linea_2 = base_dinamica.mark_line(color=color_2, size=3).encode(
+                y=alt.Y(f"{col_2}:Q", title=eje_der, scale=alt.Scale(zero=False)),
+                tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip(f"{col_2}:Q", title=eje_der, format=".1f")]
+            )
+            grafico_mixto = alt.layer(linea_1, linea_2).resolve_scale(y='independent').interactive()
+            st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: {color_2};'>{eje_der}</span></h5>", unsafe_allow_html=True)
+            st.altair_chart(grafico_mixto, use_container_width=True)
+        else:
+            st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span></h5>", unsafe_allow_html=True)
+            st.altair_chart(linea_1.interactive(), use_container_width=True)
+
     with st.expander("📄 Ver registros del periodo seleccionado"):
         columnas_a_mostrar = ["created_at"] + columnas_activas
-        st.dataframe(
-            df[columnas_a_mostrar].sort_values(by="created_at", ascending=False),
-            use_container_width=True
-        )
+        st.dataframe(df[columnas_a_mostrar].sort_values(by="created_at", ascending=False), use_container_width=True)
 else:
     st.warning("No hay datos registrados para el periodo seleccionado.")
