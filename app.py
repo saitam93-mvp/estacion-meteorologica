@@ -106,12 +106,13 @@ def fetch_data(filtro, start=None, end=None):
             
         df_num = df[cols_numericas]
         
+        # LA SOLUCIÓN: dropna(how="all") para no borrar el historial antiguo
         if total_filas > 10000:
-            df = df_num.resample("1h").mean().dropna().reset_index()
+            df = df_num.resample("1h").mean().dropna(how="all").reset_index()
         elif total_filas > 2000:
-            df = df_num.resample("10min").mean().dropna().reset_index()
+            df = df_num.resample("10min").mean().dropna(how="all").reset_index()
         else:
-            df = df_num.resample("2min").mean().dropna().reset_index()
+            df = df_num.resample("2min").mean().dropna(how="all").reset_index()
             
         return df, cols_numericas
 
@@ -137,15 +138,15 @@ if not df.empty:
     st.subheader("Calidad del Aire 🌬️")
     col5, col6, col7, col8, col9 = st.columns(5)
     with col5:
-        if "co2" in df.columns: st.metric("😶‍🌫️ CO2", f"{ultima_lectura['co2']:.0f} ppm")
+        if "co2" in df.columns and pd.notna(ultima_lectura['co2']): st.metric("😶‍🌫️ CO2", f"{ultima_lectura['co2']:.0f} ppm")
     with col6:
-        if "pm1_0" in df.columns: st.metric("🦠 PM 1.0", f"{ultima_lectura['pm1_0']:.0f} µg/m³")
+        if "pm1_0" in df.columns and pd.notna(ultima_lectura['pm1_0']): st.metric("🦠 PM 1.0", f"{ultima_lectura['pm1_0']:.0f} µg/m³")
     with col7:
-        if "pm25" in df.columns: st.metric("😷 PM 2.5", f"{ultima_lectura['pm25']:.0f} µg/m³")
+        if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']): st.metric("😷 PM 2.5", f"{ultima_lectura['pm25']:.0f} µg/m³")
     with col8:
-        if "pm10" in df.columns: st.metric("🪨 PM 10", f"{ultima_lectura['pm10']:.0f} µg/m³")
+        if "pm10" in df.columns and pd.notna(ultima_lectura['pm10']): st.metric("🪨 PM 10", f"{ultima_lectura['pm10']:.0f} µg/m³")
     with col9:
-        if "particulas_03um" in df.columns: st.metric("🔬 P >0.3µm", f"{ultima_lectura['particulas_03um']:.0f}")
+        if "particulas_03um" in df.columns and pd.notna(ultima_lectura['particulas_03um']): st.metric("🔬 P >0.3µm", f"{ultima_lectura['particulas_03um']:.0f}")
 
     st.divider()
 
@@ -179,11 +180,13 @@ if not df.empty:
     with tab4:
         st.markdown("<h5 style='text-align: center;'>Evolución de Material Particulado (µg/m³)</h5>", unsafe_allow_html=True)
         if all(col in df.columns for col in ["pm1_0", "pm25", "pm10"]):
-            df_pm = df[["created_at", "pm1_0", "pm25", "pm10"]].set_index("created_at")
+            # Limpiamos nulos localmente para no romper el gráfico de líneas de PM
+            df_pm = df.dropna(subset=["pm1_0", "pm25", "pm10"], how="all")[["created_at", "pm1_0", "pm25", "pm10"]].set_index("created_at")
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0 (Ultrafino)", "pm25": "PM 2.5 (Fino)", "pm10": "PM 10 (Grueso)"})
             st.line_chart(df_pm, color=["#FF4B4B", "#FFA15A", "#FFE24B"])
+            
             st.markdown("<br><h5 style='text-align: center;'>Densidad de Partículas (>0.3µm)</h5>", unsafe_allow_html=True)
-            df_part = df[["created_at", "particulas_03um"]].set_index("created_at")
+            df_part = df.dropna(subset=["particulas_03um"])[["created_at", "particulas_03um"]].set_index("created_at")
             st.area_chart(df_part, color="#636EFA")
         else:
             st.info("Esperando datos de Material Particulado...")
@@ -191,7 +194,7 @@ if not df.empty:
     with tab5:
         st.markdown("<h5 style='text-align: center;'>Niveles de CO2 (ppm)</h5>", unsafe_allow_html=True)
         if "co2" in df.columns:
-            df_co2 = df[["created_at", "co2"]].set_index("created_at")
+            df_co2 = df.dropna(subset=["co2"])[["created_at", "co2"]].set_index("created_at")
             st.line_chart(df_co2, color="#00C853")
         else:
             st.info("Esperando datos de CO2...")
