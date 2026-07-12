@@ -96,9 +96,9 @@ def fetch_data(filtro, start=None, end=None):
         df.set_index("created_at", inplace=True)
         total_filas = len(df)
         
-        cols_numericas = ["temperature", "humidity", "pressure", "wind_speed"]
-        if "co2" in df.columns:
-            cols_numericas.append("co2")
+        # Agregamos TODAS las columnas nuevas a la lista de numéricas si existen
+        cols_esperadas = ["temperature", "humidity", "pressure", "wind_speed", "co2", "pm1_0", "pm25", "pm10", "particulas_03um"]
+        cols_numericas = [col for col in cols_esperadas if col in df.columns]
             
         df_num = df[cols_numericas]
         
@@ -109,19 +109,20 @@ def fetch_data(filtro, start=None, end=None):
         else:
             df = df_num.resample("2min").mean().dropna().reset_index()
             
-        return df
+        return df, cols_numericas
 
-    return pd.DataFrame()
+    return pd.DataFrame(), []
 
 # --- INTERFAZ PRINCIPAL ---
-df = fetch_data(filtro_tiempo, start_date, end_date)
+df, columnas_activas = fetch_data(filtro_tiempo, start_date, end_date)
 
 if not df.empty:
-    # 1. TARJETAS DE MÉTRICAS
+    # 1. TARJETAS DE MÉTRICAS (Clima + Calidad del Aire)
     ultima_lectura = df.iloc[-1]
     fecha_local = ultima_lectura["created_at"].strftime("%d/%m/%Y %H:%M:%S")
     st.caption(f"Última actualización (Datos promediados de la franja horaria): {fecha_local}")
     
+    st.subheader("Condiciones Meteorológicas")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("🌡️ Temperatura", f"{ultima_lectura['temperature']:.1f} °C")
@@ -133,9 +134,24 @@ if not df.empty:
         st.metric("📉 Presión", f"{ultima_lectura['pressure']:.1f} hPa")
 
     st.divider()
+    
+    st.subheader("Calidad del Aire 🌬️")
+    col5, col6, col7, col8, col9 = st.columns(5)
+    with col5:
+        if "co2" in df.columns: st.metric("😶‍🌫️ CO2", f"{ultima_lectura['co2']:.0f} ppm")
+    with col6:
+        if "pm1_0" in df.columns: st.metric("🦠 PM 1.0", f"{ultima_lectura['pm1_0']:.0f} µg/m³")
+    with col7:
+        if "pm25" in df.columns: st.metric("😷 PM 2.5", f"{ultima_lectura['pm25']:.0f} µg/m³")
+    with col8:
+        if "pm10" in df.columns: st.metric("🪨 PM 10", f"{ultima_lectura['pm10']:.0f} µg/m³")
+    with col9:
+        if "particulas_03um" in df.columns: st.metric("🔬 P >0.3µm", f"{ultima_lectura['particulas_03um']:.0f}")
 
-    # 2. GRÁFICOS REORGANIZADOS
-    tab1, tab2, tab3 = st.tabs(["Temperatura", "Humedad y Presión", "Viento"])
+    st.divider()
+
+    # 2. GRÁFICOS REORGANIZADOS CON NUEVAS PESTAÑAS
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Temperatura", "Humedad y Presión", "Viento", "Material Particulado", "CO2"])
     
     with tab1:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
@@ -170,7 +186,6 @@ if not df.empty:
         st.altair_chart(grafico_mixto, use_container_width=True)
         
     with tab3:
-        # <-- EL ARREGLO: Gráfico de viento limpio sin línea ni slider
         grafico_viento = alt.Chart(df).encode(
             x=alt.X("created_at:T", title="Hora"),
             y=alt.Y("wind_speed:Q", title="Velocidad (m/s)"),
@@ -181,11 +196,34 @@ if not df.empty:
         ).mark_bar(color="#778899", opacity=0.8).interactive()
         
         st.altair_chart(grafico_viento, use_container_width=True)
+        
+    with tab4:
+        st.markdown("<h5 style='text-align: center;'>Evolución de Material Particulado (µg/m³)</h5>", unsafe_allow_html=True)
+        if all(col in df.columns for col in ["pm1_0", "pm25", "pm10"]):
+            # Preparamos el DataFrame para st.line_chart usando la fecha como índice
+            df_pm = df[["created_at", "pm1_0", "pm25", "pm10"]].set_index("created_at")
+            df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0 (Ultrafino)", "pm25": "PM 2.5 (Fino)", "pm10": "PM 10 (Grueso)"})
+            st.line_chart(df_pm, color=["#FF4B4B", "#FFA15A", "#FFE24B"])
+            
+            st.markdown("<br><h5 style='text-align: center;'>Densidad de Partículas (>0.3µm)</h5>", unsafe_allow_html=True)
+            df_part = df[["created_at", "particulas_03um"]].set_index("created_at")
+            st.area_chart(df_part, color="#636EFA")
+        else:
+            st.info("Esperando datos de Material Particulado...")
+
+    with tab5:
+        st.markdown("<h5 style='text-align: center;'>Niveles de CO2 (ppm)</h5>", unsafe_allow_html=True)
+        if "co2" in df.columns:
+            df_co2 = df[["created_at", "co2"]].set_index("created_at")
+            st.line_chart(df_co2, color="#00C853")
+        else:
+            st.info("Esperando datos de CO2...")
 
     # 3. TABLA CRUDA
     with st.expander("📄 Ver registros del periodo seleccionado"):
+        columnas_a_mostrar = ["created_at"] + columnas_activas
         st.dataframe(
-            df[["created_at", "temperature", "humidity", "pressure", "wind_speed"]].sort_values(by="created_at", ascending=False),
+            df[columnas_a_mostrar].sort_values(by="created_at", ascending=False),
             use_container_width=True
         )
 else:
