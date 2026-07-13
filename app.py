@@ -182,14 +182,28 @@ if not df.empty:
             
             df_pm = df.dropna(subset=["pm1_0", "pm25", "pm10"], how="all")[["created_at", "pm1_0", "pm25", "pm10"]]
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0", "pm25": "PM 2.5", "pm10": "PM 10"})
+            
+            # --- LÓGICA DE ESTADO PM2.5 ---
+            ultimo_pm25 = df_pm["PM 2.5"].iloc[-1]
+            if pd.notna(ultimo_pm25):
+                if ultimo_pm25 <= 50: estado_texto, estado_color = "Bueno 🟢", "#2ECC71"
+                elif ultimo_pm25 <= 80: estado_texto, estado_color = "Regular 🟡", "#F1C40F"
+                elif ultimo_pm25 <= 110: estado_texto, estado_color = "Alerta 🟠", "#E67E22"
+                elif ultimo_pm25 <= 170: estado_texto, estado_color = "Preemergencia 🔴", "#E74C3C"
+                else: estado_texto, estado_color = "Emergencia 🟣", "#8E44AD"
+                
+                st.markdown(f"<div style='text-align: center; padding: 8px 15px; border-radius: 8px; background-color: rgba(255,255,255,0.05); width: fit-content; margin: 0 auto 20px auto; border: 1px solid {estado_color}50;'>Estado PM2.5: <strong style='color: {estado_color}; font-size: 1.1em;'>{estado_texto}</strong></div>", unsafe_allow_html=True)
+
+            # --- GRÁFICO ---
             df_pm_melted = df_pm.melt(id_vars="created_at", var_name="Partícula", value_name="Concentración")
 
+            # NUEVOS COLORES FRÍOS/NEUTROS PARA EL SENSOR
             lineas_pm = alt.Chart(df_pm_melted).mark_line(size=2).encode(
                 x=alt.X("created_at:T", title="Hora"),
                 y=alt.Y("Concentración:Q", title="µg/m³"),
                 color=alt.Color("Partícula:N", title="Tipo de Partícula", scale=alt.Scale(
                     domain=["PM 1.0", "PM 2.5", "PM 10"],
-                    range=["#FF4B4B", "#FFA15A", "#FFE24B"]
+                    range=["#00E5FF", "#00E676", "#E0E0E0"] # Cyan, Verde Brillante, Gris Claro
                 )),
                 tooltip=[
                     alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
@@ -252,7 +266,7 @@ if not df.empty:
             "Viento (m/s)": {"col": "wind_speed", "color": "#778899"}
         }
         if "co2" in df.columns: opciones_metricas["CO2 (ppm)"] = {"col": "co2", "color": "#00C853"}
-        if "pm25" in df.columns: opciones_metricas["PM 2.5 (µg/m³)"] = {"col": "pm25", "color": "#FFA15A"}
+        if "pm25" in df.columns: opciones_metricas["PM 2.5 (µg/m³)"] = {"col": "pm25", "color": "#00E676"}
 
         col_sel1, col_sel2 = st.columns(2)
         with col_sel1: eje_izq = st.selectbox("Eje Izquierdo:", list(opciones_metricas.keys()), index=0)
