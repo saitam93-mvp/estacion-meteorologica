@@ -134,6 +134,16 @@ if not df.empty:
 
     st.divider()
     
+    # --- LÓGICA DE ESTADO PM2.5 (Integrado en el título) ---
+    titulo_pm25 = "😷 PM 2.5"
+    if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']):
+        val_pm25 = ultima_lectura['pm25']
+        if val_pm25 <= 50: titulo_pm25 = "😷 PM 2.5 (Bueno 🟢)"
+        elif val_pm25 <= 80: titulo_pm25 = "😷 PM 2.5 (Regular 🟡)"
+        elif val_pm25 <= 110: titulo_pm25 = "😷 PM 2.5 (Alerta 🟠)"
+        elif val_pm25 <= 170: titulo_pm25 = "😷 PM 2.5 (Preemergencia 🔴)"
+        else: titulo_pm25 = "😷 PM 2.5 (Emergencia 🟣)"
+
     st.subheader("Calidad del Aire 🌬️")
     col5, col6, col7, col8, col9 = st.columns(5)
     with col5:
@@ -141,7 +151,7 @@ if not df.empty:
     with col6:
         if "pm1_0" in df.columns and pd.notna(ultima_lectura['pm1_0']): st.metric("🦠 PM 1.0", f"{ultima_lectura['pm1_0']:.0f} µg/m³")
     with col7:
-        if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']): st.metric("😷 PM 2.5", f"{ultima_lectura['pm25']:.0f} µg/m³")
+        if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']): st.metric(titulo_pm25, f"{ultima_lectura['pm25']:.0f} µg/m³")
     with col8:
         if "pm10" in df.columns and pd.notna(ultima_lectura['pm10']): st.metric("🪨 PM 10", f"{ultima_lectura['pm10']:.0f} µg/m³")
     with col9:
@@ -177,33 +187,19 @@ if not df.empty:
         st.altair_chart(grafico_viento, use_container_width=True)
 
     with tab4:
-        st.markdown("<h5 style='text-align: center;'>Evolución de Material Particulado (µg/m³)</h5>", unsafe_allow_html=True)
         if all(col in df.columns for col in ["pm1_0", "pm25", "pm10"]):
             
             df_pm = df.dropna(subset=["pm1_0", "pm25", "pm10"], how="all")[["created_at", "pm1_0", "pm25", "pm10"]]
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0", "pm25": "PM 2.5", "pm10": "PM 10"})
-            
-            # --- LÓGICA DE ESTADO PM2.5 ---
-            ultimo_pm25 = df_pm["PM 2.5"].iloc[-1]
-            if pd.notna(ultimo_pm25):
-                if ultimo_pm25 <= 50: estado_texto, estado_color = "Bueno 🟢", "#2ECC71"
-                elif ultimo_pm25 <= 80: estado_texto, estado_color = "Regular 🟡", "#F1C40F"
-                elif ultimo_pm25 <= 110: estado_texto, estado_color = "Alerta 🟠", "#E67E22"
-                elif ultimo_pm25 <= 170: estado_texto, estado_color = "Preemergencia 🔴", "#E74C3C"
-                else: estado_texto, estado_color = "Emergencia 🟣", "#8E44AD"
-                
-                st.markdown(f"<div style='text-align: center; padding: 8px 15px; border-radius: 8px; background-color: rgba(255,255,255,0.05); width: fit-content; margin: 0 auto 20px auto; border: 1px solid {estado_color}50;'>Estado PM2.5: <strong style='color: {estado_color}; font-size: 1.1em;'>{estado_texto}</strong></div>", unsafe_allow_html=True)
-
-            # --- GRÁFICO ---
             df_pm_melted = df_pm.melt(id_vars="created_at", var_name="Partícula", value_name="Concentración")
 
-            # NUEVOS COLORES FRÍOS/NEUTROS PARA EL SENSOR
+            # LEYENDA INVERTIDA (Dominio invertido) y mismos colores asignados correctamente
             lineas_pm = alt.Chart(df_pm_melted).mark_line(size=2).encode(
                 x=alt.X("created_at:T", title="Hora"),
                 y=alt.Y("Concentración:Q", title="µg/m³"),
                 color=alt.Color("Partícula:N", title="Tipo de Partícula", scale=alt.Scale(
-                    domain=["PM 1.0", "PM 2.5", "PM 10"],
-                    range=["#00E5FF", "#00E676", "#E0E0E0"] # Cyan, Verde Brillante, Gris Claro
+                    domain=["PM 10", "PM 2.5", "PM 1.0"],
+                    range=["#E0E0E0", "#00E676", "#00E5FF"]
                 )),
                 tooltip=[
                     alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
@@ -251,7 +247,6 @@ if not df.empty:
             st.info("Esperando datos de Material Particulado...")
 
     with tab5:
-        st.markdown("<h5 style='text-align: center;'>Niveles de CO2 (ppm)</h5>", unsafe_allow_html=True)
         if "co2" in df.columns:
             df_co2 = df.dropna(subset=["co2"])[["created_at", "co2"]].set_index("created_at")
             st.line_chart(df_co2, color="#00C853")
