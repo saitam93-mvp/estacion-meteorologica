@@ -180,16 +180,14 @@ if not df.empty:
         st.markdown("<h5 style='text-align: center;'>Evolución de Material Particulado (µg/m³)</h5>", unsafe_allow_html=True)
         if all(col in df.columns for col in ["pm1_0", "pm25", "pm10"]):
             
-            # 1. Preparar datos para Altair
             df_pm = df.dropna(subset=["pm1_0", "pm25", "pm10"], how="all")[["created_at", "pm1_0", "pm25", "pm10"]]
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0", "pm25": "PM 2.5", "pm10": "PM 10"})
             df_pm_melted = df_pm.melt(id_vars="created_at", var_name="Partícula", value_name="Concentración")
 
-            # 2. Gráfico de las lecturas del sensor
             lineas_pm = alt.Chart(df_pm_melted).mark_line(size=2).encode(
                 x=alt.X("created_at:T", title="Hora"),
                 y=alt.Y("Concentración:Q", title="µg/m³"),
-                color=alt.Color("Partícula:N", scale=alt.Scale(
+                color=alt.Color("Partícula:N", title="Tipo de Partícula", scale=alt.Scale(
                     domain=["PM 1.0", "PM 2.5", "PM 10"],
                     range=["#FF4B4B", "#FFA15A", "#FFE24B"]
                 )),
@@ -200,34 +198,38 @@ if not df.empty:
                 ]
             )
 
-            # 3. Datos de los Umbrales (Norma PM2.5)
             rangos_df = pd.DataFrame({
                 'Nivel': ['Regular (>50)', 'Alerta (>80)', 'Preemergencia (>110)', 'Emergencia (>170)'],
                 'Valor': [50, 80, 110, 170],
                 'Color': ['#F1C40F', '#E67E22', '#E74C3C', '#8E44AD']
             })
 
-            # 4. Líneas punteadas de referencia
-            reglas = alt.Chart(rangos_df).mark_rule(strokeDash=[5, 5], opacity=0.7).encode(
+            reglas = alt.Chart(rangos_df).mark_rule(strokeDash=[5, 5], opacity=0.5).encode(
                 y='Valor:Q',
                 color=alt.Color('Color:N', scale=None)
             )
 
-            # 5. Textos descriptivos flotantes para cada línea
-            textos = alt.Chart(rangos_df).mark_text(
-                align='left', baseline='bottom', dx=5, dy=-2, fontSize=11, fontWeight='bold'
+            textos_sombra = alt.Chart(rangos_df).mark_text(
+                align='left', baseline='bottom', dx=5, dy=-4, fontSize=12, fontWeight='bold',
+                stroke='#0E1117', strokeWidth=3 
             ).encode(
-                x=alt.value(10), # Posición fija pegada a la izquierda del gráfico
+                x=alt.value(10),
+                y='Valor:Q',
+                text='Nivel:N'
+            )
+
+            textos_frente = alt.Chart(rangos_df).mark_text(
+                align='left', baseline='bottom', dx=5, dy=-4, fontSize=12, fontWeight='bold'
+            ).encode(
+                x=alt.value(10),
                 y='Valor:Q',
                 text='Nivel:N',
                 color=alt.Color('Color:N', scale=None)
             )
 
-            # 6. Fusionar todo y mostrar
-            grafico_pm_final = alt.layer(lineas_pm, reglas, textos).interactive()
+            grafico_pm_final = alt.layer(lineas_pm, reglas, textos_sombra, textos_frente).interactive()
             st.altair_chart(grafico_pm_final, use_container_width=True)
             
-            # --- Gráfico de Densidad (Se mantiene igual) ---
             st.markdown("<br><h5 style='text-align: center;'>Densidad de Partículas (>0.3µm)</h5>", unsafe_allow_html=True)
             df_part = df.dropna(subset=["particulas_03um"])[["created_at", "particulas_03um"]].set_index("created_at")
             st.area_chart(df_part, color="#636EFA")
