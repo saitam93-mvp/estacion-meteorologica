@@ -134,7 +134,7 @@ if not df.empty:
 
     st.divider()
     
-    # --- LÓGICA DE ESTADO PM2.5 (Integrado en el título) ---
+    # --- LÓGICA DE ESTADO PM 2.5 ---
     titulo_pm25 = "😷 PM 2.5"
     if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']):
         val_pm25 = ultima_lectura['pm25']
@@ -143,6 +143,16 @@ if not df.empty:
         elif val_pm25 <= 110: titulo_pm25 = "😷 PM 2.5 (Alerta 🟠)"
         elif val_pm25 <= 170: titulo_pm25 = "😷 PM 2.5 (Preemergencia 🔴)"
         else: titulo_pm25 = "😷 PM 2.5 (Emergencia 🟣)"
+
+    # --- LÓGICA DE ESTADO PM 10 (Norma Chilena de Calidad del Aire) ---
+    titulo_pm10 = "🪨 PM 10"
+    if "pm10" in df.columns and pd.notna(ultima_lectura['pm10']):
+        val_pm10 = ultima_lectura['pm10']
+        if val_pm10 <= 150: titulo_pm10 = "🪨 PM 10 (Bueno 🟢)"
+        elif val_pm10 <= 199: titulo_pm10 = "🪨 PM 10 (Regular 🟡)"
+        elif val_pm10 <= 299: titulo_pm10 = "🪨 PM 10 (Alerta 🟠)"
+        elif val_pm10 <= 399: titulo_pm10 = "🪨 PM 10 (Preemergencia 🔴)"
+        else: titulo_pm10 = "🪨 PM 10 (Emergencia 🟣)"
 
     st.subheader("Calidad del Aire 🌬️")
     col5, col6, col7, col8, col9 = st.columns(5)
@@ -153,7 +163,7 @@ if not df.empty:
     with col7:
         if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']): st.metric(titulo_pm25, f"{ultima_lectura['pm25']:.0f} µg/m³")
     with col8:
-        if "pm10" in df.columns and pd.notna(ultima_lectura['pm10']): st.metric("🪨 PM 10", f"{ultima_lectura['pm10']:.0f} µg/m³")
+        if "pm10" in df.columns and pd.notna(ultima_lectura['pm10']): st.metric(titulo_pm10, f"{ultima_lectura['pm10']:.0f} µg/m³")
     with col9:
         if "particulas_03um" in df.columns and pd.notna(ultima_lectura['particulas_03um']): st.metric("🔬 P >0.3µm", f"{ultima_lectura['particulas_03um']:.0f}")
 
@@ -193,13 +203,18 @@ if not df.empty:
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0", "pm25": "PM 2.5", "pm10": "PM 10"})
             df_pm_melted = df_pm.melt(id_vars="created_at", var_name="Partícula", value_name="Concentración")
 
-            # LEYENDA INVERTIDA (Dominio invertido) y mismos colores asignados correctamente
+            # NUEVO: Orientamos la leyenda hacia abajo (orient='bottom') para que no estorbe en celulares
             lineas_pm = alt.Chart(df_pm_melted).mark_line(size=2).encode(
                 x=alt.X("created_at:T", title="Hora"),
                 y=alt.Y("Concentración:Q", title="µg/m³"),
-                color=alt.Color("Partícula:N", title="Tipo de Partícula", scale=alt.Scale(
+                color=alt.Color("Partícula:N", title=None, scale=alt.Scale(
                     domain=["PM 10", "PM 2.5", "PM 1.0"],
                     range=["#E0E0E0", "#00E676", "#00E5FF"]
+                ), legend=alt.Legend(
+                    orient="bottom",
+                    direction="horizontal",
+                    titlePadding=10,
+                    padding=10
                 )),
                 tooltip=[
                     alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
