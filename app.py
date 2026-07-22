@@ -148,6 +148,13 @@ df_bruto, columnas_activas = fetch_data(filtro_tiempo, start_date, end_date)
 
 if not df_bruto.empty:
     df = calcular_indicadores_avanzados(df_bruto)
+    
+    # REGLA DE AIRE LIMPIO: Rellenar nulos con 0 solo para el material particulado
+    cols_particulas = ["pm1_0", "pm25", "pm10", "particulas_03um"]
+    for col in cols_particulas:
+        if col in df.columns:
+            df[col] = df[col].fillna(0)
+            
     ultima_lectura = df.iloc[-1]
     fecha_local = ultima_lectura["created_at"].strftime("%d/%m/%Y %H:%M:%S")
     st.caption(f"Última actualización (Datos promediados de la franja horaria): {fecha_local}")
@@ -205,7 +212,6 @@ if not df_bruto.empty:
     with tab1:
         st.markdown("<h5 style='text-align: center;'>Temperatura vs Sensación Térmica (°C)</h5>", unsafe_allow_html=True)
         if "sensacion_termica" in df.columns:
-            # Preparamos los datos con nombres bonitos para la leyenda
             df_temp = df[["created_at", "temperature", "sensacion_termica"]].rename(
                 columns={"temperature": "Temperatura", "sensacion_termica": "Sensación Térmica"}
             ).set_index("created_at")
