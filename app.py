@@ -127,11 +127,18 @@ def calcular_indicadores_avanzados(df):
         alpha = ((a * df_calc['temperature']) / (b + df_calc['temperature'])) + np.log(df_calc['humidity'] / 100.0)
         df_calc['dew_point'] = (b * alpha) / (a - alpha)
         
-        # Índice de Calor / Sensación Térmica
-        T_f = df_calc['temperature'] * 1.8 + 32
-        RH = df_calc['humidity']
-        HI = 0.5 * (T_f + 61.0 + ((T_f - 68.0) * 1.2) + (RH * 0.094))
-        df_calc['sensacion_termica'] = (HI - 32) / 1.8
+        if "wind_speed" in df_calc.columns:
+            # Temperatura Aparente Universal (Incluye Viento y Humedad)
+            # 1. Calculamos la presión de vapor (e) en hPa
+            e = (df_calc['humidity'] / 100.0) * 6.105 * np.exp((17.27 * df_calc['temperature']) / (237.7 + df_calc['temperature']))
+            # 2. Fórmula de Sensación Térmica (la velocidad del viento de tu sensor ya está en m/s, lo cual es perfecto para esta ecuación)
+            df_calc['sensacion_termica'] = df_calc['temperature'] + (0.33 * e) - (0.70 * df_calc['wind_speed']) - 4.00
+        else:
+            # Fallback simple si por alguna razón falla el sensor de viento
+            T_f = df_calc['temperature'] * 1.8 + 32
+            RH = df_calc['humidity']
+            HI = 0.5 * (T_f + 61.0 + ((T_f - 68.0) * 1.2) + (RH * 0.094))
+            df_calc['sensacion_termica'] = (HI - 32) / 1.8
         
     if "wind_speed" in df_calc.columns and "pm25" in df_calc.columns:
         # Índice de Dispersión
