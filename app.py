@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 from supabase import create_client, Client
 from datetime import date, timedelta, datetime
+import numpy as np
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -61,7 +62,7 @@ if filtro_tiempo == "Rango de Fechas":
         st.sidebar.warning("Por favor, selecciona también una fecha de término.")
         st.stop() 
 
-# --- FUNCIÓN DE EXTRACCIÓN Y COMPRESIÓN DE DATOS ---
+# --- FUNCIONES DE EXTRACCIÓN Y PROCESAMIENTO ---
 def fetch_data(filtro, start=None, end=None):
     query = supabase.table("weather_data").select("*")
     
@@ -117,10 +118,36 @@ def fetch_data(filtro, start=None, end=None):
 
     return pd.DataFrame(), []
 
-# --- INTERFAZ PRINCIPAL ---
-df, columnas_activas = fetch_data(filtro_tiempo, start_date, end_date)
+def calcular_indicadores_avanzados(df):
+    df_calc = df.copy()
+    
+    if "temperature" in df_calc.columns and "humidity" in df_calc.columns:
+        # Punto de Rocío (Magnus-Tetens)
+        a, b = 17.27, 237.7
+        alpha = ((a * df_calc['temperature']) / (b + df_calc['temperature'])) + np.log(df_calc['humidity'] / 100.0)
+        df_calc['dew_point'] = (b * alpha) / (a - alpha)
+        
+        # Índice de Calor / Sensación Térmica
+        T_f = df_calc['temperature'] * 1.8 + 32
+        RH = df_calc['humidity']
+        HI = 0.5 * (T_f + 61.0 + ((T_f - 68.0) * 1.2) + (RH * 0.094))
+        df_calc['sensacion_termica'] = (HI - 32) / 1.8
+        
+    if "wind_speed" in df_calc.columns and "pm25" in df_calc.columns:
+        # Índice de Dispersión
+        df_calc['dispersion_idx'] = df_calc['wind_speed'] / (df_calc['pm25'] + 1)
+        
+    if "particulas_03um" in df_calc.columns and "pm25" in df_calc.columns:
+        # Densidad de masa de polvo
+        df_calc['densidad_polvo'] = df_calc['particulas_03um'] / (df_calc['pm25'] + 1)
+        
+    return df_calc
 
-if not df.empty:
+# --- INTERFAZ PRINCIPAL ---
+df_bruto, columnas_activas = fetch_data(filtro_tiempo, start_date, end_date)
+
+if not df_bruto.empty:
+    df = calcular_indicadores_avanzados(df_bruto)
     ultima_lectura = df.iloc[-1]
     fecha_local = ultima_lectura["created_at"].strftime("%d/%m/%Y %H:%M:%S")
     st.caption(f"Última actualización (Datos promediados de la franja horaria): {fecha_local}")
@@ -134,7 +161,7 @@ if not df.empty:
 
     st.divider()
     
-    # --- LÓGICA DE ESTADO PM 2.5 ---
+    # Lógica PM 2.5
     titulo_pm25 = "😷 PM 2.5"
     if "pm25" in df.columns and pd.notna(ultima_lectura['pm25']):
         val_pm25 = ultima_lectura['pm25']
@@ -144,7 +171,7 @@ if not df.empty:
         elif val_pm25 <= 170: titulo_pm25 = "😷 PM 2.5 (Preemergencia 🔴)"
         else: titulo_pm25 = "😷 PM 2.5 (Emergencia 🟣)"
 
-    # --- LÓGICA DE ESTADO PM 10 (Norma Chilena de Calidad del Aire) ---
+    # Lógica PM 10
     titulo_pm10 = "🪨 PM 10"
     if "pm10" in df.columns and pd.notna(ultima_lectura['pm10']):
         val_pm10 = ultima_lectura['pm10']
@@ -169,7 +196,12 @@ if not df.empty:
 
     st.divider()
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Temperatura", "Humedad y Presión", "Viento", "Material Particulado", "CO2", "Comparador Dinámico"])
+    # Reducimos a 6 pestañas
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "Temperatura", "Humedad y Presión", "Viento", 
+        "Material Particulado", "Comparador Dinámico",
+        "Indicadores Físicos 🧮"
+    ])
     
     with tab1:
         st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
@@ -198,24 +230,17 @@ if not df.empty:
 
     with tab4:
         if all(col in df.columns for col in ["pm1_0", "pm25", "pm10"]):
-            
             df_pm = df.dropna(subset=["pm1_0", "pm25", "pm10"], how="all")[["created_at", "pm1_0", "pm25", "pm10"]]
             df_pm = df_pm.rename(columns={"pm1_0": "PM 1.0", "pm25": "PM 2.5", "pm10": "PM 10"})
             df_pm_melted = df_pm.melt(id_vars="created_at", var_name="Partícula", value_name="Concentración")
 
-            # NUEVO: Orientamos la leyenda hacia abajo (orient='bottom') para que no estorbe en celulares
             lineas_pm = alt.Chart(df_pm_melted).mark_line(size=2).encode(
                 x=alt.X("created_at:T", title="Hora"),
                 y=alt.Y("Concentración:Q", title="µg/m³"),
                 color=alt.Color("Partícula:N", title=None, scale=alt.Scale(
                     domain=["PM 10", "PM 2.5", "PM 1.0"],
                     range=["#E0E0E0", "#00E676", "#00E5FF"]
-                ), legend=alt.Legend(
-                    orient="bottom",
-                    direction="horizontal",
-                    titlePadding=10,
-                    padding=10
-                )),
+                ), legend=alt.Legend(orient="bottom", direction="horizontal", titlePadding=10, padding=10)),
                 tooltip=[
                     alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"),
                     alt.Tooltip("Partícula:N", title="Tipo"),
@@ -235,22 +260,12 @@ if not df.empty:
             )
 
             textos_sombra = alt.Chart(rangos_df).mark_text(
-                align='left', baseline='bottom', dx=5, dy=-4, fontSize=12, fontWeight='bold',
-                stroke='#0E1117', strokeWidth=3 
-            ).encode(
-                x=alt.value(10),
-                y='Valor:Q',
-                text='Nivel:N'
-            )
+                align='left', baseline='bottom', dx=5, dy=-4, fontSize=12, fontWeight='bold', stroke='#0E1117', strokeWidth=3 
+            ).encode(x=alt.value(10), y='Valor:Q', text='Nivel:N')
 
             textos_frente = alt.Chart(rangos_df).mark_text(
                 align='left', baseline='bottom', dx=5, dy=-4, fontSize=12, fontWeight='bold'
-            ).encode(
-                x=alt.value(10),
-                y='Valor:Q',
-                text='Nivel:N',
-                color=alt.Color('Color:N', scale=None)
-            )
+            ).encode(x=alt.value(10), y='Valor:Q', text='Nivel:N', color=alt.Color('Color:N', scale=None))
 
             grafico_pm_final = alt.layer(lineas_pm, reglas, textos_sombra, textos_frente).interactive()
             st.altair_chart(grafico_pm_final, use_container_width=True)
@@ -262,13 +277,6 @@ if not df.empty:
             st.info("Esperando datos de Material Particulado...")
 
     with tab5:
-        if "co2" in df.columns:
-            df_co2 = df.dropna(subset=["co2"])[["created_at", "co2"]].set_index("created_at")
-            st.line_chart(df_co2, color="#00C853")
-        else:
-            st.info("Esperando datos de CO2...")
-
-    with tab6:
         opciones_metricas = {
             "Temperatura (°C)": {"col": "temperature", "color": "#FF4B4B"},
             "Humedad (%)": {"col": "humidity", "color": "#0083B0"},
@@ -305,6 +313,26 @@ if not df.empty:
         else:
             st.markdown(f"<h5 style='text-align: center;'><span style='color: {color_1};'>{eje_izq}</span></h5>", unsafe_allow_html=True)
             st.altair_chart(linea_1.interactive(), use_container_width=True)
+
+    with tab6:
+        if "sensacion_termica" in df.columns:
+            st.markdown("<h5 style='text-align: center;'>Índice de Confort Térmico (Sensación Térmica °C)</h5>", unsafe_allow_html=True)
+            st.line_chart(df.set_index("created_at")["sensacion_termica"], color="#FF8C00")
+            st.divider()
+
+        if "dew_point" in df.columns:
+            st.markdown("<h5 style='text-align: center;'>Punto de Rocío (°C)</h5>", unsafe_allow_html=True)
+            st.line_chart(df.set_index("created_at")[["temperature", "dew_point"]], color=["#FF4B4B", "#0083B0"])
+            st.divider()
+            
+        if "densidad_polvo" in df.columns:
+            st.markdown("<h5 style='text-align: center;'>Densidad de Masa de Polvo (Ultrafinos vs PM2.5)</h5>", unsafe_allow_html=True)
+            st.area_chart(df.set_index("created_at")["densidad_polvo"], color="#8E44AD")
+            st.divider()
+        
+        if "dispersion_idx" in df.columns:
+            st.markdown("<h5 style='text-align: center;'>Índice de Dispersión de Contaminantes (Viento / PM2.5)</h5>", unsafe_allow_html=True)
+            st.area_chart(df.set_index("created_at")["dispersion_idx"], color="#778899")
 
     with st.expander("📄 Ver registros del periodo seleccionado"):
         columnas_a_mostrar = ["created_at"] + columnas_activas
