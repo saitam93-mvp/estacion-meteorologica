@@ -196,7 +196,6 @@ if not df_bruto.empty:
 
     st.divider()
 
-    # Reducimos a 6 pestañas
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "Temperatura", "Humedad y Presión", "Viento", 
         "Material Particulado", "Comparador Dinámico",
@@ -204,7 +203,15 @@ if not df_bruto.empty:
     ])
     
     with tab1:
-        st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
+        st.markdown("<h5 style='text-align: center;'>Temperatura vs Sensación Térmica (°C)</h5>", unsafe_allow_html=True)
+        if "sensacion_termica" in df.columns:
+            # Preparamos los datos con nombres bonitos para la leyenda
+            df_temp = df[["created_at", "temperature", "sensacion_termica"]].rename(
+                columns={"temperature": "Temperatura", "sensacion_termica": "Sensación Térmica"}
+            ).set_index("created_at")
+            st.line_chart(data=df_temp, color=["#FF4B4B", "#FF8C00"])
+        else:
+            st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
         
     with tab2:
         st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
@@ -315,11 +322,6 @@ if not df_bruto.empty:
             st.altair_chart(linea_1.interactive(), use_container_width=True)
 
     with tab6:
-        if "sensacion_termica" in df.columns:
-            st.markdown("<h5 style='text-align: center;'>Índice de Confort Térmico (Sensación Térmica °C)</h5>", unsafe_allow_html=True)
-            st.line_chart(df.set_index("created_at")["sensacion_termica"], color="#FF8C00")
-            st.divider()
-
         if "dew_point" in df.columns:
             st.markdown("<h5 style='text-align: center;'>Punto de Rocío (°C)</h5>", unsafe_allow_html=True)
             st.line_chart(df.set_index("created_at")[["temperature", "dew_point"]], color=["#FF4B4B", "#0083B0"])
