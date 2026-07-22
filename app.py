@@ -129,9 +129,7 @@ def calcular_indicadores_avanzados(df):
         
         if "wind_speed" in df_calc.columns:
             # Temperatura Aparente Universal (Incluye Viento y Humedad)
-            # 1. Calculamos la presión de vapor (e) en hPa
             e = (df_calc['humidity'] / 100.0) * 6.105 * np.exp((17.27 * df_calc['temperature']) / (237.7 + df_calc['temperature']))
-            # 2. Fórmula de Sensación Térmica (la velocidad del viento de tu sensor ya está en m/s, lo cual es perfecto para esta ecuación)
             df_calc['sensacion_termica'] = df_calc['temperature'] + (0.33 * e) - (0.70 * df_calc['wind_speed']) - 4.00
         else:
             # Fallback simple si por alguna razón falla el sensor de viento
@@ -217,14 +215,23 @@ if not df_bruto.empty:
     ])
     
     with tab1:
-        st.markdown("<h5 style='text-align: center;'>Temperatura vs Sensación Térmica (°C)</h5>", unsafe_allow_html=True)
+        st.markdown("<h5 style='text-align: center;'><span style='color: #FF4B4B;'>Temperatura (°C)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Sensación Térmica (°C)</span></h5>", unsafe_allow_html=True)
+        
+        base_temp = alt.Chart(df).encode(x=alt.X("created_at:T", title="Hora"))
+        linea_temp = base_temp.mark_line(color="#FF4B4B", size=3).encode(
+            y=alt.Y("temperature:Q", title="Temperatura (°C)", scale=alt.Scale(zero=False)),
+            tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip("temperature:Q", title="Temp (°C)", format=".1f")]
+        )
         if "sensacion_termica" in df.columns:
-            df_temp = df[["created_at", "temperature", "sensacion_termica"]].rename(
-                columns={"temperature": "Temperatura", "sensacion_termica": "Sensación Térmica"}
-            ).set_index("created_at")
-            st.line_chart(data=df_temp, color=["#FF4B4B", "#FF8C00"])
+            linea_sens = base_temp.mark_line(color="#FF8C00", size=3).encode(
+                y=alt.Y("sensacion_termica:Q", title="Sensación Térmica (°C)", scale=alt.Scale(zero=False)),
+                tooltip=[alt.Tooltip("created_at:T", title="Hora", format="%d/%m %H:%M"), alt.Tooltip("sensacion_termica:Q", title="Sensación (°C)", format=".1f")]
+            )
+            grafico_temp = alt.layer(linea_temp, linea_sens).interactive()
         else:
-            st.line_chart(data=df, x="created_at", y="temperature", color="#FF4B4B")
+            grafico_temp = linea_temp.interactive()
+            
+        st.altair_chart(grafico_temp, use_container_width=True)
         
     with tab2:
         st.markdown("<h5 style='text-align: center;'><span style='color: #0083B0;'>Humedad (%)</span> &nbsp;&nbsp;|&nbsp;&nbsp; <span style='color: #FF8C00;'>Presión (hPa)</span></h5>", unsafe_allow_html=True)
@@ -297,14 +304,22 @@ if not df_bruto.empty:
             st.info("Esperando datos de Material Particulado...")
 
     with tab5:
+        # Aquí expandimos las opciones con TODOS los datos disponibles
         opciones_metricas = {
             "Temperatura (°C)": {"col": "temperature", "color": "#FF4B4B"},
             "Humedad (%)": {"col": "humidity", "color": "#0083B0"},
             "Presión (hPa)": {"col": "pressure", "color": "#FF8C00"},
             "Viento (m/s)": {"col": "wind_speed", "color": "#778899"}
         }
+        if "sensacion_termica" in df.columns: opciones_metricas["Sensación Térmica (°C)"] = {"col": "sensacion_termica", "color": "#FF8C00"}
+        if "dew_point" in df.columns: opciones_metricas["Punto de Rocío (°C)"] = {"col": "dew_point", "color": "#8E44AD"}
         if "co2" in df.columns: opciones_metricas["CO2 (ppm)"] = {"col": "co2", "color": "#00C853"}
+        if "pm1_0" in df.columns: opciones_metricas["PM 1.0 (µg/m³)"] = {"col": "pm1_0", "color": "#00E5FF"}
         if "pm25" in df.columns: opciones_metricas["PM 2.5 (µg/m³)"] = {"col": "pm25", "color": "#00E676"}
+        if "pm10" in df.columns: opciones_metricas["PM 10 (µg/m³)"] = {"col": "pm10", "color": "#E0E0E0"}
+        if "particulas_03um" in df.columns: opciones_metricas["Partículas >0.3µm"] = {"col": "particulas_03um", "color": "#636EFA"}
+        if "densidad_polvo" in df.columns: opciones_metricas["Densidad de Polvo"] = {"col": "densidad_polvo", "color": "#8E44AD"}
+        if "dispersion_idx" in df.columns: opciones_metricas["Índice Dispersión"] = {"col": "dispersion_idx", "color": "#778899"}
 
         col_sel1, col_sel2 = st.columns(2)
         with col_sel1: eje_izq = st.selectbox("Eje Izquierdo:", list(opciones_metricas.keys()), index=0)
@@ -337,7 +352,7 @@ if not df_bruto.empty:
     with tab6:
         if "dew_point" in df.columns:
             st.markdown("<h5 style='text-align: center;'>Punto de Rocío (°C)</h5>", unsafe_allow_html=True)
-            st.line_chart(df.set_index("created_at")[["temperature", "dew_point"]], color=["#FF4B4B", "#0083B0"])
+            st.line_chart(df.set_index("created_at")[["temperature", "dew_point"]], color=["#FF4B4B", "#8E44AD"])
             st.divider()
             
         if "densidad_polvo" in df.columns:
